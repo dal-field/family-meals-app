@@ -1,4 +1,4 @@
-import { SEED_MEALS, SEED_PLAN, DAYS, SLOTS } from "./data.js";
+import { DAYS, SEED_MEALS, SEED_PLAN, SLOTS, emptySlots, rollingDays } from "./data.js";
 
 const KEYS = {
   userMeals: "fm.userMeals",
@@ -94,29 +94,63 @@ export function hideSeedMeal(id, hidden = true) {
   write(KEYS.hidden, [...ids]);
 }
 
-export function loadPlan() {
-  const saved = read(KEYS.plan, null);
-  const plan = clone(SEED_PLAN);
-  if (!saved || typeof saved !== "object") return plan;
+function normalizeSlot(savedSlot) {
+  if (!savedSlot || typeof savedSlot !== "object") return null;
+  return {
+    mealId: savedSlot.mealId ?? null,
+    label: typeof savedSlot.label === "string" ? savedSlot.label : "",
+  };
+}
 
-  for (const day of DAYS) {
-    const savedDay = saved[day.id];
-    if (!savedDay) continue;
-    for (const slot of SLOTS) {
-      const savedSlot = savedDay[slot.id];
-      if (savedSlot && typeof savedSlot === "object") {
-        plan[day.id][slot.id] = {
-          mealId: savedSlot.mealId ?? null,
-          label: typeof savedSlot.label === "string" ? savedSlot.label : "",
-        };
+function dayFromSaved(savedDay) {
+  const day = emptySlots();
+  if (!savedDay || typeof savedDay !== "object") return day;
+  for (const slot of SLOTS) {
+    const next = normalizeSlot(savedDay[slot.id]);
+    if (next) day[slot.id] = next;
+  }
+  return day;
+}
+
+function isOldWeekdayPlan(saved) {
+  return Boolean(saved && !saved.version && DAYS.some((day) => saved[day.id]));
+}
+
+export function loadPlan(now = new Date()) {
+  const saved = read(KEYS.plan, null);
+  const dates = {};
+
+  if (saved?.version === 3 && saved.dates && typeof saved.dates === "object") {
+    for (const [key, value] of Object.entries(saved.dates)) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(key)) dates[key] = dayFromSaved(value);
+    }
+  } else if (isOldWeekdayPlan(saved)) {
+    for (const day of rollingDays(now)) {
+      if (day.seedable && saved[day.weekdayId]) {
+        dates[day.key] = dayFromSaved(saved[day.weekdayId]);
       }
     }
+    write(KEYS.plan, { version: 3, dates });
   }
-  return plan;
+
+  return { dates };
+}
+
+export function resolveDayPlan(plan, day) {
+  if (plan.dates[day.key]) return plan.dates[day.key];
+  if (day.seedable) return clone(SEED_PLAN[day.weekdayId]);
+  return emptySlots();
+}
+
+export function ensureDayPlan(plan, day) {
+  if (!plan.dates[day.key]) {
+    plan.dates[day.key] = day.seedable ? clone(SEED_PLAN[day.weekdayId]) : emptySlots();
+  }
+  return plan.dates[day.key];
 }
 
 export function savePlan(plan) {
-  write(KEYS.plan, plan);
+  write(KEYS.plan, { version: 3, dates: plan.dates });
 }
 
 function normalizeGroceryItem(item) {

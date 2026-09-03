@@ -20,7 +20,7 @@ No accounts. No backend. Changes stay on the device in `localStorage` and are me
 
 ## What a parent can do
 
-- **This Week** — today is first, then the next 6 days. Only today starts expanded. Tonight’s dinner is at the top. Tap any slot to pick a library meal or type a one-off.
+- **This Week** — the next 7 calendar days starting today, labeled like `Thursday (9/3)`. Only today starts expanded. Last week’s meals do not roll onto next week. Tonight’s dinner is at the top. Tap any slot to pick a library meal or type a one-off.
 - **Meals** — searchable library, filter by Breakfast / Lunch / Dinner / Snack / Make-ahead. Open a meal for notes and recipe links (links open in a new tab).
 - **Add** — save a new meal (name, types, notes, recipe URL, ingredients, make-ahead). Edit later. Delete meals you added; hide a baked-in seed meal if you do not want it in the list.
 - **Groceries** — a simple list you can add to, check off, and delete. Tag items with a store (Costco, Walmart, and others) so the list groups by store.

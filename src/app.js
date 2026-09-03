@@ -1,22 +1,23 @@
 import {
-  DAYS,
   FAMILY,
   SEED_MEALS,
   SLOTS,
   STORE_PRESETS,
   TYPE_ORDER,
-  daysStartingToday,
+  localDateKey,
+  rollingDays,
   slugify,
   storeColor,
   storeKey,
-  todayDayId,
 } from "./data.js";
 import {
   deleteUserMeal,
+  ensureDayPlan,
   hideSeedMeal,
   loadGrocery,
   loadMeals,
   loadPlan,
+  resolveDayPlan,
   saveGrocery,
   savePlan,
   saveSeedEdit,
@@ -59,7 +60,7 @@ export function createApp(root) {
     showHidden: false,
     selectedId: null,
     picker: null,
-    expandedDay: todayDayId(),
+    expandedDay: localDateKey(new Date()),
     pickerQuery: "",
     oneOff: "",
     editingId: null,
@@ -160,7 +161,6 @@ export function createApp(root) {
   }
 
   function render() {
-    const today = todayDayId();
     root.innerHTML = `
       <div class="app-shell">
         <header class="topbar">
@@ -184,7 +184,7 @@ export function createApp(root) {
       ${state.toast ? `<div class="toast" role="status">${escapeHtml(state.toast)}</div>` : ""}
     `;
 
-    bind(today);
+    bind();
   }
 
   function headerTitle() {
@@ -201,20 +201,25 @@ export function createApp(root) {
     return addView();
   }
 
+  function weekDays() {
+    return rollingDays();
+  }
+
   function weekView() {
-    const today = todayDayId();
-    const dinner = slotText(state.plan[today].dinner) || "Nothing planned";
+    const days = weekDays();
+    const today = days[0];
+    const dinner = slotText(resolveDayPlan(state.plan, today).dinner) || "Nothing planned";
     const makeAhead = visibleMeals().filter((meal) => meal.makeAhead);
 
     return `
       <section class="card hero today-dinner">
         <div class="label">Tonight’s dinner</div>
         <h2>${escapeHtml(dinner)}</h2>
-        <p class="meta">${escapeHtml(dayLabel(today))} · tap any slot below to change it</p>
+        <p class="meta">${escapeHtml(today.title)} · tap any slot below to change it</p>
       </section>
 
       <div class="week-list">
-        ${daysStartingToday().map((day) => dayCard(day, today)).join("")}
+        ${days.map((day) => dayCard(day)).join("")}
       </div>
 
       <section class="section">
@@ -239,16 +244,17 @@ export function createApp(root) {
     `;
   }
 
-  function dayCard(day, today) {
-    const open = state.expandedDay === day.id;
-    const dinner = slotText(state.plan[day.id].dinner);
+  function dayCard(day) {
+    const open = state.expandedDay === day.key;
+    const plan = resolveDayPlan(state.plan, day);
+    const dinner = slotText(plan.dinner);
     return `
-      <article class="card day-card ${day.id === today ? "is-today" : ""} ${open ? "is-open" : "is-collapsed"}">
-        <button class="day-toggle" type="button" data-toggle-day="${day.id}" aria-expanded="${open}">
+      <article class="card day-card ${day.isToday ? "is-today" : ""} ${open ? "is-open" : "is-collapsed"}">
+        <button class="day-toggle" type="button" data-toggle-day="${day.key}" aria-expanded="${open}">
           <span class="day-toggle-text">
             <span class="day-title-row">
-              <h3>${day.label}</h3>
-              ${day.id === today ? `<span class="today-pill">Today</span>` : ""}
+              <h3>${escapeHtml(day.title)}</h3>
+              ${day.isToday ? `<span class="today-pill">Today</span>` : ""}
             </span>
             ${
               open
@@ -262,12 +268,12 @@ export function createApp(root) {
           open
             ? `<div class="slots">
           ${SLOTS.map((slot) => {
-            const value = slotText(state.plan[day.id][slot.id]);
+            const value = slotText(plan[slot.id]);
             return `
               <button
                 class="slot-btn ${slot.id === "dinner" ? "is-dinner" : ""} ${value ? "" : "is-empty"}"
                 type="button"
-                data-day="${day.id}"
+                data-day="${day.key}"
                 data-slot="${slot.id}"
               >
                 <span class="kind">${slot.label}</span>
@@ -541,12 +547,12 @@ export function createApp(root) {
   function pickerSheet() {
     const { day, slot } = state.picker;
     const slotMeta = SLOTS.find((item) => item.id === slot);
-    const current = slotText(state.plan[day][slot]);
+    const current = slotText(resolveDayPlan(state.plan, day)[slot]);
     const meals = filteredLibrary(state.pickerQuery, slot);
     return `
       <div class="sheet-backdrop" data-close-picker>
         <aside class="sheet" role="dialog" aria-modal="true">
-          <p class="kicker">${dayLabel(day)}</p>
+          <p class="kicker">${escapeHtml(day.title)}</p>
           <h2>Change ${slotMeta.label.toLowerCase()}</h2>
           ${current ? `<p class="hint">Now: ${escapeHtml(current)}</p>` : ""}
           <input class="search" type="search" placeholder="Search the library" value="${escapeAttr(state.pickerQuery)}" data-picker-search />
@@ -601,7 +607,9 @@ export function createApp(root) {
 
     root.querySelectorAll("[data-day]").forEach((button) => {
       button.addEventListener("click", () => {
-        state.picker = { day: button.dataset.day, slot: button.dataset.slot };
+        const day = weekDays().find((item) => item.key === button.dataset.day);
+        if (!day) return;
+        state.picker = { day, slot: button.dataset.slot };
         state.pickerQuery = "";
         state.oneOff = "";
         render();
@@ -805,7 +813,7 @@ export function createApp(root) {
       button.addEventListener("click", () => {
         const meal = mealById(button.dataset.pickMeal);
         if (!meal || !state.picker) return;
-        state.plan[state.picker.day][state.picker.slot] = { mealId: meal.id, label: meal.name };
+        ensureDayPlan(state.plan, state.picker.day)[state.picker.slot] = { mealId: meal.id, label: meal.name };
         savePlan(state.plan);
         state.picker = null;
         toast("Weekly plan updated");
@@ -832,7 +840,7 @@ export function createApp(root) {
         event.preventDefault();
         const value = String(new FormData(oneOff).get("oneOff") || "").trim();
         if (!value || !state.picker) return;
-        state.plan[state.picker.day][state.picker.slot] = { mealId: null, label: value };
+        ensureDayPlan(state.plan, state.picker.day)[state.picker.slot] = { mealId: null, label: value };
         savePlan(state.plan);
         state.picker = null;
         toast("Weekly plan updated");
@@ -844,7 +852,7 @@ export function createApp(root) {
     if (clearSlot) {
       clearSlot.addEventListener("click", () => {
         if (!state.picker) return;
-        state.plan[state.picker.day][state.picker.slot] = { mealId: null, label: "" };
+        ensureDayPlan(state.plan, state.picker.day)[state.picker.slot] = { mealId: null, label: "" };
         savePlan(state.plan);
         state.picker = null;
         toast("Slot cleared");
@@ -893,10 +901,6 @@ export function createApp(root) {
   function mealMeta(meal) {
     const types = meal.types.map((type) => TYPE_LABEL[type]).join(" · ");
     return meal.makeAhead ? `${types} · Make-ahead` : types;
-  }
-
-  function dayLabel(id) {
-    return DAYS.find((day) => day.id === id)?.label || id;
   }
 
   window.addEventListener("hashchange", () => {
