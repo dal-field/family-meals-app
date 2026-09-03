@@ -470,22 +470,24 @@ export function daysStartingToday(now = new Date()) {
 }
 
 export function rollingDays(now = new Date()) {
-  const start = startOfLocalDay(now);
+  const start = mondayOfWeek(now);
+  const todayKey = localDateKey(startOfLocalDay(now));
   const days = [];
   for (let i = 0; i < 7; i += 1) {
     const date = new Date(start);
     date.setDate(start.getDate() + i);
     const weekdayId = todayDayId(date);
     const meta = DAYS.find((item) => item.id === weekdayId);
+    const key = localDateKey(date);
     days.push({
-      key: localDateKey(date),
+      key,
       weekdayId,
       label: meta.label,
       short: meta.short,
       compact: meta.compact,
       dateLabel: usShortDate(date),
       title: `${meta.label} (${usShortDate(date)})`,
-      isToday: i === 0,
+      isToday: key === todayKey,
       seedable: isInCurrentPlanWeek(date, now),
     });
   }
