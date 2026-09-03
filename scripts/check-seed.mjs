@@ -1,5 +1,5 @@
 import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, emptySlot, formatWeekRange, localDateKey, normalizeIngredients, rollingDays, shiftMonday } from "../src/data.js";
-import { scaleSize } from "../src/photos.js";
+import { resolvedMealPhotoSrc, scaleSize } from "../src/photos.js";
 import { clearDayPlan, dayHasMeals, freshPlan, migrateLegacyGrocery, migratePlanToV4, resolveDayPlan, setPlanSlot, slotHasMeal, swapDaySlots } from "../src/storage.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
@@ -444,6 +444,19 @@ if (scaledTall.width !== 533 || scaledTall.height !== 1600) {
 const alreadySmall = scaleSize(800, 600, 1600);
 if (alreadySmall.width !== 800 || alreadySmall.height !== 600) {
   console.error("Small photos should not be upscaled", alreadySmall);
+  process.exit(1);
+}
+
+if (resolvedMealPhotoSrc(undefined) || resolvedMealPhotoSrc("none") || resolvedMealPhotoSrc({})) {
+  console.error("Missing meal photos must not produce a src");
+  process.exit(1);
+}
+if (resolvedMealPhotoSrc({ url: "blob:full", thumbUrl: "blob:thumb" }) !== "blob:thumb") {
+  console.error("Cached meal photos should prefer the thumbnail src");
+  process.exit(1);
+}
+if (resolvedMealPhotoSrc({ url: "blob:full" }) !== "blob:full") {
+  console.error("Cached meal photos should fall back to the full src");
   process.exit(1);
 }
 

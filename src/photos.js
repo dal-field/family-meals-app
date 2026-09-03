@@ -2,6 +2,11 @@ const DB_NAME = "fm.mealPhotos";
 const DB_VERSION = 1;
 const STORE = "photos";
 
+export function resolvedMealPhotoSrc(cached) {
+  if (!cached || cached === "none") return "";
+  return cached.thumbUrl || cached.url || "";
+}
+
 export function scaleSize(width, height, maxEdge) {
   const longest = Math.max(width, height);
   if (!longest || longest <= maxEdge) return { width, height };

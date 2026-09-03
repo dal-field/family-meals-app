@@ -1226,6 +1226,10 @@ h2 {
   font-weight: 750;
 }
 
+.meal-photo-btn[hidden] {
+  display: none;
+}
+
 .meal-photo-btn img {
   max-height: 160px;
 }

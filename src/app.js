@@ -29,7 +29,7 @@ import {
   slotHasMeal,
   swapDaySlots,
 } from "./storage.js";
-import { compressImageFile, deleteMealPhoto, getMealPhoto, putMealPhoto } from "./photos.js";
+import { compressImageFile, deleteMealPhoto, getMealPhoto, putMealPhoto, resolvedMealPhotoSrc } from "./photos.js";
 
 const TYPE_LABEL = {
   breakfast: "Breakfast",
@@ -328,19 +328,15 @@ export function createApp(root) {
       </div>`;
   }
 
-  function mealPhotoButton(mealId, mealName) {
+  function mealPhotoButton(mealId) {
     if (!mealId) return "";
     const cached = state.photoCache[mealId];
-    if (cached === "none") return "";
-    const src = cached && cached !== "none" ? cached.thumbUrl || cached.url : "";
+    if (cached !== "none" && cached == null) requestMealPhoto(mealId);
+    const src = resolvedMealPhotoSrc(cached);
+    if (!src) return "";
     return `
-      <button
-        class="meal-photo-btn ${src ? "" : "is-pending"}"
-        type="button"
-        data-open-photo="${mealId}"
-        ${src ? "" : "hidden"}
-      >
-        <img ${src ? `src="${escapeAttr(src)}"` : ""} data-meal-photo="${mealId}" alt="${escapeAttr(mealName)} photo" />
+      <button class="meal-photo-btn" type="button" data-open-photo="${mealId}">
+        <img src="${escapeAttr(src)}" data-meal-photo="${mealId}" alt="" />
         <span>Photo</span>
       </button>`;
   }
@@ -355,20 +351,30 @@ export function createApp(root) {
       </div>`;
   }
 
+  function overlayMealIds() {
+    const ids = new Set();
+    if (state.selectedId) ids.add(state.selectedId);
+    if (state.dinnerIdea?.mealId) ids.add(state.dinnerIdea.mealId);
+    if (state.weekSlotDetail) {
+      const meal = resolveWeekSlotDetail(state.weekSlotDetail)?.meal;
+      if (meal?.id) ids.add(meal.id);
+    }
+    return [...ids];
+  }
+
+  const photoLookups = new Set();
+
+  function requestMealPhoto(mealId) {
+    if (!mealId || state.photoCache[mealId] != null || photoLookups.has(mealId)) return;
+    photoLookups.add(mealId);
+    ensurePhotoCached(mealId).then((cached) => {
+      photoLookups.delete(mealId);
+      if (cached) render();
+    });
+  }
+
   async function hydrateMealPhotos() {
-    const images = [...root.querySelectorAll("[data-meal-photo]")];
-    await Promise.all(
-      images.map(async (img) => {
-        const cached = await ensurePhotoCached(img.dataset.mealPhoto);
-        const button = img.closest("[data-open-photo]");
-        if (!cached) {
-          if (button) button.hidden = true;
-          return;
-        }
-        img.src = cached.thumbUrl || cached.url;
-        if (button) button.hidden = false;
-      })
-    );
+    overlayMealIds().forEach(requestMealPhoto);
   }
 
   function render() {
@@ -747,7 +753,7 @@ export function createApp(root) {
   function mealDetailBlocks(meal) {
     const ingredients = normalizeIngredients(meal.ingredients);
     return `
-      ${mealPhotoButton(meal.id, meal.name)}
+      ${mealPhotoButton(meal.id)}
       <div class="badge-row">
         ${meal.types.map((type) => `<span class="badge">${TYPE_LABEL[type]}</span>`).join("")}
         ${meal.makeAhead ? `<span class="badge">Make-ahead</span>` : ""}
