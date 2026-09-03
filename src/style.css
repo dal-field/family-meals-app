@@ -285,20 +285,20 @@ h2 {
 
 .dinner-idea-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
 }
 
 .dinner-idea {
-  min-height: 44px;
+  min-height: 40px;
   display: grid;
   gap: 1px;
   align-content: center;
   text-align: left;
-  padding: 6px 6px;
+  padding: 4px 4px;
   border: 1px solid var(--line);
   background: #fffdf8;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .dinner-idea .meal-name {
@@ -306,12 +306,12 @@ h2 {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 0.68rem;
+  font-size: 0.58rem;
   line-height: 1.2;
 }
 
 .dinner-idea .meal-meta {
-  font-size: 0.56rem;
+  font-size: 0.5rem;
 }
 
 @media (min-width: 768px) {
