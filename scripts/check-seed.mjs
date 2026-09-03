@@ -1,4 +1,5 @@
-import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, daysStartingToday } from "../src/data.js";
+import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, daysStartingToday, rollingDays } from "../src/data.js";
+import { resolveDayPlan } from "../src/storage.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
 const required = [
@@ -112,6 +113,28 @@ const thursday = new Date("2026-09-03T12:00:00");
 const rotated = daysStartingToday(thursday).map((day) => day.id);
 if (rotated.join(",") !== "thursday,friday,saturday,sunday,monday,tuesday,wednesday") {
   console.error("Week rotation mismatch", rotated);
+  process.exit(1);
+}
+
+const rolling = rollingDays(thursday);
+if (rolling.map((day) => day.title).join("|") !== "Thursday (9/3)|Friday (9/4)|Saturday (9/5)|Sunday (9/6)|Monday (9/7)|Tuesday (9/8)|Wednesday (9/9)") {
+  console.error("Rolling titles mismatch", rolling.map((day) => day.title));
+  process.exit(1);
+}
+if (rolling.filter((day) => day.seedable).map((day) => day.key).join(",") !== "2026-09-03,2026-09-04,2026-09-05,2026-09-06") {
+  console.error("Seedable dates mismatch", rolling);
+  process.exit(1);
+}
+
+const emptyPlan = { dates: {} };
+const thursdayPlan = resolveDayPlan(emptyPlan, rolling[0]);
+if (thursdayPlan.dinner.mealId !== "ck-green-bean-casserole") {
+  console.error("Current-week Thursday should use seed dinner");
+  process.exit(1);
+}
+const nextMonday = resolveDayPlan(emptyPlan, rolling[4]);
+if (nextMonday.breakfast.label || nextMonday.dinner.label) {
+  console.error("Next Monday should start empty", nextMonday);
   process.exit(1);
 }
 

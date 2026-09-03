@@ -398,11 +398,70 @@ export function todayDayId(now = new Date()) {
   return map[now.getDay()];
 }
 
+export function startOfLocalDay(now = new Date()) {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+export function localDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function usShortDate(date) {
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+export function mondayOfWeek(date) {
+  const start = startOfLocalDay(date);
+  const sundayBased = start.getDay();
+  const offset = sundayBased === 0 ? 6 : sundayBased - 1;
+  start.setDate(start.getDate() - offset);
+  return start;
+}
+
+export function isInCurrentPlanWeek(date, now = new Date()) {
+  const start = mondayOfWeek(now);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 7);
+  const day = startOfLocalDay(date);
+  return day >= start && day < end;
+}
+
+export function emptySlots() {
+  return {
+    breakfast: { mealId: null, label: "" },
+    lunch: { mealId: null, label: "" },
+    dinner: { mealId: null, label: "" },
+    snack: { mealId: null, label: "" },
+  };
+}
+
 export function daysStartingToday(now = new Date()) {
-  const today = todayDayId(now);
-  const index = DAYS.findIndex((day) => day.id === today);
-  if (index < 0) return DAYS;
-  return [...DAYS.slice(index), ...DAYS.slice(0, index)];
+  return rollingDays(now).map((day) => DAYS.find((item) => item.id === day.weekdayId));
+}
+
+export function rollingDays(now = new Date()) {
+  const start = startOfLocalDay(now);
+  const days = [];
+  for (let i = 0; i < 7; i += 1) {
+    const date = new Date(start);
+    date.setDate(start.getDate() + i);
+    const weekdayId = todayDayId(date);
+    const meta = DAYS.find((item) => item.id === weekdayId);
+    days.push({
+      key: localDateKey(date),
+      weekdayId,
+      label: meta.label,
+      short: meta.short,
+      dateLabel: usShortDate(date),
+      title: `${meta.label} (${usShortDate(date)})`,
+      isToday: i === 0,
+      seedable: isInCurrentPlanWeek(date, now),
+    });
+  }
+  return days;
 }
 
 export const STORE_PRESETS = ["Costco", "Walmart", "Target", "Aldi", "Smith's"];
