@@ -1,4 +1,5 @@
 import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, emptySlot, normalizeIngredients, rollingDays } from "../src/data.js";
+import { scaleSize } from "../src/photos.js";
 import { clearDayPlan, dayHasMeals, freshPlan, migrateLegacyGrocery, migratePlanToV4, resolveDayPlan, setPlanSlot, slotHasMeal, swapDaySlots } from "../src/storage.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
@@ -398,6 +399,22 @@ if (!costco || costco.items.length !== 1 || costco.items[0].name !== "Chicken") 
 const emptyStore = groceryMigrated.stores.find((store) => store.name === "Trader Joe's");
 if (!emptyStore || emptyStore.items.length) {
   console.error("Custom stores without items should stay visible", emptyStore);
+  process.exit(1);
+}
+
+const scaledDown = scaleSize(4000, 3000, 1600);
+if (scaledDown.width !== 1600 || scaledDown.height !== 1200) {
+  console.error("Wide photos should scale to the max edge", scaledDown);
+  process.exit(1);
+}
+const scaledTall = scaleSize(800, 2400, 1600);
+if (scaledTall.width !== 533 || scaledTall.height !== 1600) {
+  console.error("Tall photos should scale to the max edge", scaledTall);
+  process.exit(1);
+}
+const alreadySmall = scaleSize(800, 600, 1600);
+if (alreadySmall.width !== 800 || alreadySmall.height !== 600) {
+  console.error("Small photos should not be upscaled", alreadySmall);
   process.exit(1);
 }
 
