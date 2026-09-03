@@ -94,8 +94,7 @@ export function createApp(root) {
     if (TABS.some((item) => item.id === tab)) state.tab = tab;
     else state.tab = "week";
 
-    if (state.tab === "meals" && extra) state.selectedId = extra;
-    else if (state.tab !== "meals") state.selectedId = null;
+    state.selectedId = state.tab === "meals" && extra ? extra : null;
 
     if (state.tab === "add" && extra) {
       const meal = mealById(extra);
@@ -592,7 +591,9 @@ export function createApp(root) {
 
     root.querySelectorAll("[data-close-sheet]").forEach((node) => {
       node.addEventListener("click", (event) => {
-        if (event.target === node) go("meals");
+        if (node.classList.contains("sheet-backdrop") && event.target !== node) return;
+        state.selectedId = null;
+        go("meals");
       });
     });
 
