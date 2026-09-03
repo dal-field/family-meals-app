@@ -11,7 +11,7 @@ export const DAYS = [
 ];
 
 export const SLOTS = [
-  { id: "breakfast", label: "Breakfast", compact: "Brkfst" },
+  { id: "breakfast", label: "Breakfast", compact: "Bfast" },
   { id: "lunch", label: "Lunch", compact: "Lunch" },
   { id: "dinner", label: "Dinner", compact: "Dinner" },
   { id: "snack", label: "Snack", compact: "Snack" },

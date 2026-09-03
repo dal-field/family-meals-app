@@ -177,7 +177,7 @@ export function createApp(root) {
 
   function render() {
     root.innerHTML = `
-      <div class="app-shell">
+      <div class="app-shell ${state.tab === "week" ? "is-week" : ""}">
         <header class="topbar">
           <div>
             <p class="kicker">${FAMILY}</p>
@@ -234,7 +234,7 @@ export function createApp(root) {
         <div class="week-grid">
           <div class="week-grid-corner" aria-hidden="true"></div>
           ${SLOTS.map(
-            (slot) => `<div class="week-grid-h ${slot.id === "dinner" ? "is-dinner" : ""}">${escapeHtml(slot.compact)}</div>`
+            (slot) => `<div class="week-grid-h ${slot.id === "dinner" ? "is-dinner" : ""}" title="${escapeAttr(slot.label)}">${escapeHtml(slot.compact)}</div>`
           ).join("")}
           ${days
             .map((day) => {
@@ -256,6 +256,7 @@ export function createApp(root) {
                     <button
                       class="week-grid-cell ${slot.id === "dinner" ? "is-dinner" : ""} ${filled ? "" : "is-empty"} ${day.isToday ? "is-today" : ""}"
                       type="button"
+                      aria-label="${escapeAttr(`${day.title} ${slot.label}: ${value || "empty"}`)}"
                       ${filled ? `data-view-slot="${day.key}:${slot.id}"` : `data-assign-slot="${day.key}:${slot.id}"`}
                     >${escapeHtml(value || "—")}</button>`;
                 }).join("")}`;
