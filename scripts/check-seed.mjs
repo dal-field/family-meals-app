@@ -1,4 +1,4 @@
-import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, daysStartingToday, normalizeIngredients, rollingDays } from "../src/data.js";
+import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, STORE_PRESETS, daysStartingToday, normalizeIngredients, rollingDays } from "../src/data.js";
 import { clearDayPlan, dayHasMeals, resolveDayPlan, swapDaySlots } from "../src/storage.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
@@ -217,6 +217,11 @@ if (thuAfterMove.dinner.mealId !== "ck-green-bean-casserole") {
 }
 if (moved.dates["2026-09-05"] || moved.dates["2026-09-06"]) {
   console.error("Swap must only persist the two dates", Object.keys(moved.dates));
+  process.exit(1);
+}
+
+if (STORE_PRESETS.includes("Aldi") || STORE_PRESETS.join("|") !== "Costco|Walmart|Target|Smith's") {
+  console.error("Store presets should keep Costco, Walmart, Target, and Smith's without Aldi", STORE_PRESETS);
   process.exit(1);
 }
 
