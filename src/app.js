@@ -376,7 +376,6 @@ export function createApp(root) {
   function groceryView() {
     const groups = groupGroceryItems(state.grocery.items);
     return `
-      <p class="hint">Add what you need and tag a store if you want. The list groups by store and stays on this phone.</p>
       <div class="card grocery-add">
         <input class="search" style="margin:0" type="text" placeholder="Add an item" value="${escapeAttr(state.groceryDraft)}" data-grocery-draft />
         <div class="grocery-add-row">
