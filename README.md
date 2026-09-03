@@ -53,4 +53,10 @@ npm run preview
 
 Every push to `main` builds the static site and deploys it with GitHub Actions to GitHub Pages (`/family-meals-app/`).
 
-If Pages is not live yet: **Repo → Settings → Pages → Source: GitHub Actions**. The first deploy may ask you to approve the `github-pages` environment under **Settings → Environments**.
+If the live URL 404s after a green Actions run, enable Pages once:
+
+1. Open **https://github.com/dal-field/family-meals-app/settings/pages**
+2. Under **Build and deployment → Source**, choose **GitHub Actions**
+3. If asked, approve the **github-pages** environment at **https://github.com/dal-field/family-meals-app/settings/environments**
+
+The deploy workflow also sets `enablement: true` on `actions/configure-pages` so the first Actions run can turn Pages on by itself when the token allows it.
