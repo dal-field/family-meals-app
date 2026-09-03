@@ -142,6 +142,21 @@ export function resolveDayPlan(plan, day) {
   return emptySlots();
 }
 
+export function slotHasMeal(slot) {
+  if (!slot || typeof slot !== "object") return false;
+  return Boolean(slot.mealId || (typeof slot.label === "string" && slot.label.trim()));
+}
+
+export function dayHasMeals(plan, day) {
+  const slots = resolveDayPlan(plan, day);
+  return SLOTS.some((slot) => slotHasMeal(slots[slot.id]));
+}
+
+export function clearDayPlan(plan, day) {
+  plan.dates[day.key] = emptySlots();
+  return plan.dates[day.key];
+}
+
 export function ensureDayPlan(plan, day) {
   if (!plan.dates[day.key]) {
     plan.dates[day.key] = day.seedable ? clone(SEED_PLAN[day.weekdayId]) : emptySlots();

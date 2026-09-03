@@ -11,6 +11,8 @@ import {
   storeKey,
 } from "./data.js";
 import {
+  clearDayPlan,
+  dayHasMeals,
   deleteUserMeal,
   ensureDayPlan,
   hideSeedMeal,
@@ -61,6 +63,7 @@ export function createApp(root) {
     selectedId: null,
     picker: null,
     expandedDay: localDateKey(new Date()),
+    clearConfirm: null,
     pickerQuery: "",
     oneOff: "",
     editingId: null,
@@ -181,6 +184,7 @@ export function createApp(root) {
       </nav>
       ${state.selectedId ? mealSheet() : ""}
       ${state.picker ? pickerSheet() : ""}
+      ${state.clearConfirm ? clearConfirmSheet() : ""}
       ${state.toast ? `<div class="toast" role="status">${escapeHtml(state.toast)}</div>` : ""}
     `;
 
@@ -248,6 +252,7 @@ export function createApp(root) {
     const open = state.expandedDay === day.key;
     const plan = resolveDayPlan(state.plan, day);
     const dinner = slotText(plan.dinner);
+    const canClear = dayHasMeals(state.plan, day);
     return `
       <article class="card day-card ${day.isToday ? "is-today" : ""} ${open ? "is-open" : "is-collapsed"}">
         <button class="day-toggle" type="button" data-toggle-day="${day.key}" aria-expanded="${open}">
@@ -280,6 +285,13 @@ export function createApp(root) {
                 <span class="value">${escapeHtml(value || "Tap to add")}</span>
               </button>`;
           }).join("")}
+          ${
+            canClear
+              ? `<div class="day-clear">
+                  <button class="text-btn" type="button" data-clear-day="${day.key}">Clear All Meals</button>
+                </div>`
+              : ""
+          }
         </div>`
             : ""
         }
@@ -544,6 +556,26 @@ export function createApp(root) {
     `;
   }
 
+  function clearConfirmSheet() {
+    const day = state.clearConfirm;
+    if (!day) return "";
+    return `
+      <div class="sheet-backdrop" data-close-clear>
+        <aside class="sheet sheet-confirm" role="dialog" aria-modal="true" aria-labelledby="clear-title">
+          <div class="sheet-body">
+            <p class="kicker">This week</p>
+            <h2 id="clear-title">Clear all meals for ${escapeHtml(day.title)}?</h2>
+            <p class="hint">This removes breakfast, lunch, dinner, and snack for this date only. Other days stay as they are.</p>
+          </div>
+          <div class="actions sheet-actions">
+            <button class="danger" type="button" data-confirm-clear>Clear meals</button>
+            <button class="ghost" type="button" data-close-clear>Cancel</button>
+          </div>
+        </aside>
+      </div>
+    `;
+  }
+
   function pickerSheet() {
     const { day, slot } = state.picker;
     const slotMeta = SLOTS.find((item) => item.id === slot);
@@ -615,6 +647,36 @@ export function createApp(root) {
         render();
       });
     });
+
+    root.querySelectorAll("[data-clear-day]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const day = weekDays().find((item) => item.key === button.dataset.clearDay);
+        if (!day || !dayHasMeals(state.plan, day)) return;
+        state.clearConfirm = day;
+        render();
+      });
+    });
+
+    root.querySelectorAll("[data-close-clear]").forEach((node) => {
+      node.addEventListener("click", (event) => {
+        if (node.classList.contains("sheet-backdrop") && event.target !== node) return;
+        state.clearConfirm = null;
+        render();
+      });
+    });
+
+    const confirmClear = root.querySelector("[data-confirm-clear]");
+    if (confirmClear) {
+      confirmClear.addEventListener("click", () => {
+        const day = state.clearConfirm;
+        if (!day) return;
+        clearDayPlan(state.plan, day);
+        savePlan(state.plan);
+        state.clearConfirm = null;
+        toast(`Cleared ${day.title}`);
+        render();
+      });
+    }
 
     root.querySelectorAll("[data-open-meal]").forEach((button) => {
       button.addEventListener("click", () => go(`meals/${button.dataset.openMeal}`));
