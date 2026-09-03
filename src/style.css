@@ -82,7 +82,7 @@ a {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .kicker {
@@ -125,11 +125,6 @@ h2 {
   margin-bottom: 16px;
 }
 
-.hero.today-dinner {
-  background:
-    linear-gradient(165deg, #efe4c8 0%, var(--paper) 62%);
-}
-
 .hero .label {
   color: var(--sage-deep);
   font-weight: 700;
@@ -145,6 +140,144 @@ h2 {
 
 .hero .meta {
   color: var(--muted);
+}
+
+.week-grid-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.week-grid {
+  display: grid;
+  grid-template-columns: 38px repeat(4, minmax(0, 1fr));
+  width: 100%;
+}
+
+.week-grid-corner,
+.week-grid-h {
+  padding: 8px 3px 6px;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-align: center;
+  color: var(--muted);
+  background: #f7f1e6;
+  border-bottom: 1px solid var(--line);
+}
+
+.week-grid-h.is-dinner {
+  color: var(--terra);
+  background: var(--terra-soft);
+}
+
+.week-grid-day {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 1px;
+  min-height: 48px;
+  padding: 4px 2px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: #f7f1e6;
+  color: var(--ink);
+}
+
+.week-grid-dow {
+  font-weight: 800;
+  font-size: 0.84rem;
+  line-height: 1;
+}
+
+.week-grid-date {
+  font-size: 0.62rem;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.week-grid-cell {
+  min-height: 48px;
+  min-width: 0;
+  padding: 5px 4px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  background: #fffdf8;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 650;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.week-grid-cell.is-dinner {
+  background: var(--terra-soft);
+}
+
+.week-grid-cell.is-empty {
+  color: var(--muted);
+  font-weight: 500;
+  text-align: center;
+}
+
+.week-grid-day.is-today,
+.week-grid-cell.is-today {
+  box-shadow: inset 0 0 0 2px rgba(201, 161, 90, 0.55);
+}
+
+.dinner-ideas h2 {
+  margin-bottom: 4px;
+}
+
+.dinner-idea-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dinner-idea {
+  min-height: 64px;
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  border-radius: 14px;
+}
+
+.dinner-idea .meal-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.day-slot-summary {
+  margin: 0 0 12px;
+  padding-left: 1.15em;
+}
+
+.day-slot-summary li {
+  margin: 4px 0;
+}
+
+.hint-list {
+  color: var(--muted);
+  font-size: 0.92rem;
+  margin: 8px 0 0;
+  padding-left: 1.2em;
+}
+
+.hint-list strong {
+  color: var(--ink);
 }
 
 .slot-btn,

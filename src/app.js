@@ -3,7 +3,7 @@ import {
   SEED_MEALS,
   SLOTS,
   TYPE_ORDER,
-  localDateKey,
+  emptySlot,
   normalizeIngredients,
   rollingDays,
   slugify,
@@ -13,7 +13,6 @@ import {
   clearDayPlan,
   dayHasMeals,
   deleteUserMeal,
-  ensureDayPlan,
   hideSeedMeal,
   loadGrocery,
   loadMeals,
@@ -23,6 +22,7 @@ import {
   savePlan,
   saveSeedEdit,
   saveUserMeal,
+  setPlanSlot,
   slotHasMeal,
   swapDaySlots,
 } from "./storage.js";
@@ -63,9 +63,11 @@ export function createApp(root) {
     showHidden: false,
     selectedId: null,
     picker: null,
-    expandedDay: localDateKey(new Date()),
     clearConfirm: null,
+    daySheet: null,
     weekSlotDetail: null,
+    dinnerIdea: null,
+    dinnerQuery: "",
     pickerQuery: "",
     oneOff: "",
     editingId: null,
@@ -194,8 +196,10 @@ export function createApp(root) {
       </nav>
       ${state.selectedId ? mealSheet() : ""}
       ${state.picker ? pickerSheet() : ""}
+      ${state.daySheet ? dayActionSheet() : ""}
       ${state.clearConfirm ? clearConfirmSheet() : ""}
       ${state.weekSlotDetail ? weekSlotDetailSheet() : ""}
+      ${state.dinnerIdea ? dinnerIdeaSheet() : ""}
       ${state.storeDialog ? storeDialogSheet() : ""}
       ${state.toast ? `<div class="toast" role="status">${escapeHtml(state.toast)}</div>` : ""}
     `;
@@ -223,90 +227,69 @@ export function createApp(root) {
 
   function weekView() {
     const days = weekDays();
-    const today = days[0];
-    const dinner = slotText(resolveDayPlan(state.plan, today).dinner) || "Nothing planned";
-    const makeAhead = visibleMeals().filter((meal) => meal.makeAhead);
+    const dinners = filteredLibrary(state.dinnerQuery, "dinner");
 
     return `
-      <section class="card hero today-dinner">
-        <div class="label">Tonight’s dinner</div>
-        <h2>${escapeHtml(dinner)}</h2>
+      <section class="week-grid-card" aria-label="Weekly meal plan">
+        <div class="week-grid">
+          <div class="week-grid-corner" aria-hidden="true"></div>
+          ${SLOTS.map(
+            (slot) => `<div class="week-grid-h ${slot.id === "dinner" ? "is-dinner" : ""}">${escapeHtml(slot.compact)}</div>`
+          ).join("")}
+          ${days
+            .map((day) => {
+              const plan = resolveDayPlan(state.plan, day);
+              return `
+                <button
+                  class="week-grid-day ${day.isToday ? "is-today" : ""}"
+                  type="button"
+                  data-open-day="${day.key}"
+                  aria-label="${escapeAttr(day.title)} actions"
+                >
+                  <span class="week-grid-dow">${escapeHtml(day.compact)}</span>
+                  <span class="week-grid-date">${escapeHtml(day.dateLabel)}</span>
+                </button>
+                ${SLOTS.map((slot) => {
+                  const value = slotText(plan[slot.id]);
+                  const filled = Boolean(value);
+                  return `
+                    <button
+                      class="week-grid-cell ${slot.id === "dinner" ? "is-dinner" : ""} ${filled ? "" : "is-empty"} ${day.isToday ? "is-today" : ""}"
+                      type="button"
+                      ${filled ? `data-view-slot="${day.key}:${slot.id}"` : `data-assign-slot="${day.key}:${slot.id}"`}
+                    >${escapeHtml(value || "—")}</button>`;
+                }).join("")}`;
+            })
+            .join("")}
+        </div>
       </section>
 
-      <div class="week-list">
-        ${days.map((day) => dayCard(day)).join("")}
-      </div>
-
-      <section class="section">
-        <article class="card prep-card">
-          <h2>Make-ahead breakfasts</h2>
-          <p class="hint">Prep Sunday night so weekday mornings are easier.</p>
-          <ul class="prep-list">
-            ${makeAhead
-              .map(
-                (meal) => `
-                  <li>
-                    <button type="button" data-open-meal="${meal.id}">
-                      <span class="meal-name">${escapeHtml(meal.name)}</span>
-                      <span class="meal-meta">View</span>
-                    </button>
-                  </li>`
-              )
-              .join("")}
-          </ul>
-        </article>
-      </section>
-    `;
-  }
-
-  function dayCard(day) {
-    const open = state.expandedDay === day.key;
-    const plan = resolveDayPlan(state.plan, day);
-    const dinner = slotText(plan.dinner);
-    const canClear = dayHasMeals(state.plan, day);
-    return `
-      <article class="card day-card ${day.isToday ? "is-today" : ""} ${open ? "is-open" : "is-collapsed"}">
-        <button class="day-toggle" type="button" data-toggle-day="${day.key}" aria-expanded="${open}">
-          <span class="day-toggle-text">
-            <span class="day-title-row">
-              <h3>${escapeHtml(day.title)}</h3>
-              ${day.isToday ? `<span class="today-pill">Today</span>` : ""}
-            </span>
-            ${
-              open
-                ? ""
-                : `<span class="day-summary">${escapeHtml(dinner || "No dinner planned")}</span>`
-            }
-          </span>
-          <span class="chevron" aria-hidden="true">${open ? "▴" : "▾"}</span>
-        </button>
-        ${
-          open
-            ? `<div class="slots">
-          ${SLOTS.map((slot) => {
-            const value = slotText(plan[slot.id]);
-            const filled = Boolean(value);
-            return `
-              <button
-                class="slot-btn ${slot.id === "dinner" ? "is-dinner" : ""} ${filled ? "" : "is-empty"}"
-                type="button"
-                ${filled ? `data-view-slot="${day.key}:${slot.id}"` : `data-assign-slot="${day.key}:${slot.id}"`}
-              >
-                <span class="kind">${slot.label}</span>
-                <span class="value">${escapeHtml(value || "Tap to add")}</span>
-              </button>`;
-          }).join("")}
+      <section class="section dinner-ideas">
+        <h2>Dinner ideas</h2>
+        <p class="hint">Tap a dinner to see details and assign it to a night.</p>
+        <input
+          class="search"
+          type="search"
+          placeholder="Search dinners"
+          value="${escapeAttr(state.dinnerQuery)}"
+          data-dinner-search
+        />
+        <div class="dinner-idea-grid">
           ${
-            canClear
-              ? `<div class="day-clear">
-                  <button class="text-btn" type="button" data-clear-day="${day.key}">Clear All Meals</button>
-                </div>`
-              : ""
+            dinners.length
+              ? dinners
+                  .map(
+                    (meal) => `
+                      <button class="dinner-idea" type="button" data-dinner-idea="${meal.id}">
+                        <span class="meal-name">${escapeHtml(meal.name)}</span>
+                        <span class="meal-meta">${meal.makeAhead ? "Make-ahead" : meal.recipeUrl ? "Recipe" : "Dinner"}</span>
+                      </button>`
+                  )
+                  .join("")
+              : `<p class="empty">No dinners match that search.</p>`
           }
-        </div>`
-            : ""
-        }
-      </article>
+        </div>
+      </section>
     `;
   }
 
@@ -590,7 +573,7 @@ export function createApp(root) {
             <div class="sheet-body">
               <p class="kicker">${escapeHtml(day.title)} · ${escapeHtml(slotMeta.label)}</p>
               <h2 id="week-clear-title">Clear ${escapeHtml(slotMeta.label.toLowerCase())}?</h2>
-              <p class="hint">This removes only this slot. Other meals on ${escapeHtml(day.title)} stay as they are.</p>
+              <p class="hint">${escapeHtml(slotClearHint(day, slot))}</p>
             </div>
             <div class="actions sheet-actions">
               <button class="danger" type="button" data-confirm-week-slot-clear>Clear slot</button>
@@ -610,7 +593,7 @@ export function createApp(root) {
               <button class="text-btn week-slot-back" type="button" data-week-slot-back>← Back to details</button>
               <p class="kicker">${escapeHtml(day.title)} · ${escapeHtml(slotMeta.label)}</p>
               <h2 id="week-swap-title">Switch with another day</h2>
-              <p class="hint">Same meal type only. An empty day is fine — meals swap between the two days.</p>
+              <p class="hint">${escapeHtml(slotSwapHint(slot))}</p>
               <div class="meal-list">
                 ${others
                   .map((other) => {
@@ -767,6 +750,38 @@ export function createApp(root) {
       </svg>`;
   }
 
+  function dayActionSheet() {
+    const day = state.daySheet;
+    if (!day) return "";
+    const plan = resolveDayPlan(state.plan, day);
+    const canClear = dayHasMeals(state.plan, day);
+    return `
+      <div class="sheet-backdrop" data-close-day-sheet>
+        <aside class="sheet sheet-confirm" role="dialog" aria-modal="true" aria-labelledby="day-sheet-title">
+          <div class="sheet-body">
+            <p class="kicker">${day.isToday ? "Today" : "This week"}</p>
+            <h2 id="day-sheet-title">${escapeHtml(day.title)}</h2>
+            <ul class="day-slot-summary">
+              ${SLOTS.map((slot) => {
+                const value = slotText(plan[slot.id]) || "Empty";
+                return `<li><strong>${escapeHtml(slot.label)}</strong> ${escapeHtml(value)}</li>`;
+              }).join("")}
+            </ul>
+            <p class="hint">Tap a meal cell to view or change it. Clear all meals removes this date’s dinner and ${escapeHtml(day.label)}’s usual breakfast, lunch, and snack.</p>
+          </div>
+          <div class="actions sheet-actions">
+            ${
+              canClear
+                ? `<button class="danger" type="button" data-clear-day="${day.key}">Clear all meals</button>`
+                : ""
+            }
+            <button class="ghost" type="button" data-close-day-sheet>Close</button>
+          </div>
+        </aside>
+      </div>
+    `;
+  }
+
   function clearConfirmSheet() {
     const day = state.clearConfirm;
     if (!day) return "";
@@ -776,7 +791,11 @@ export function createApp(root) {
           <div class="sheet-body">
             <p class="kicker">This week</p>
             <h2 id="clear-title">Clear all meals for ${escapeHtml(day.title)}?</h2>
-            <p class="hint">This removes breakfast, lunch, dinner, and snack for this date only. Other days stay as they are.</p>
+            <p class="hint">This will:</p>
+            <ul class="hint-list">
+              <li>Clear <strong>${escapeHtml(day.label)}’s dinner on ${escapeHtml(day.dateLabel)} only</strong></li>
+              <li>Clear the usual <strong>${escapeHtml(day.label)} breakfast, lunch, and snack</strong> for every ${escapeHtml(day.label)}</li>
+            </ul>
           </div>
           <div class="actions sheet-actions">
             <button class="danger" type="button" data-confirm-clear>Clear meals</button>
@@ -787,17 +806,94 @@ export function createApp(root) {
     `;
   }
 
+  function dinnerIdeaSheet() {
+    const idea = state.dinnerIdea;
+    if (!idea) return "";
+    const meal = mealById(idea.mealId);
+    if (!meal) return "";
+    const panel = idea.panel || null;
+
+    if (panel === "confirm" && idea.confirmDay) {
+      const current = slotText(resolveDayPlan(state.plan, idea.confirmDay).dinner) || "Empty";
+      return `
+        <div class="sheet-backdrop" data-close-dinner-idea>
+          <aside class="sheet sheet-confirm" role="dialog" aria-modal="true" aria-labelledby="dinner-replace-title">
+            <div class="sheet-body">
+              <p class="kicker">${escapeHtml(idea.confirmDay.title)}</p>
+              <h2 id="dinner-replace-title">Replace dinner?</h2>
+              <p class="hint">This replaces <strong>${escapeHtml(current)}</strong> with <strong>${escapeHtml(meal.name)}</strong> on ${escapeHtml(idea.confirmDay.title)} only. Breakfast, lunch, and snack stay as they are.</p>
+            </div>
+            <div class="actions sheet-actions">
+              <button class="primary" type="button" data-confirm-dinner-assign>Replace dinner</button>
+              <button class="ghost" type="button" data-dinner-idea-panel="assign">Cancel</button>
+            </div>
+          </aside>
+        </div>
+      `;
+    }
+
+    if (panel === "assign") {
+      return `
+        <div class="sheet-backdrop" data-close-dinner-idea>
+          <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="dinner-assign-title">
+            <div class="sheet-body">
+              <button class="text-btn week-slot-back" type="button" data-dinner-idea-panel="">← Back to details</button>
+              <p class="kicker">${escapeHtml(meal.name)}</p>
+              <h2 id="dinner-assign-title">Assign to a day</h2>
+              <p class="hint">Choosing a night with a dinner already planned will ask before replacing it.</p>
+              <div class="meal-list">
+                ${weekDays()
+                  .map((day) => {
+                    const current = slotText(resolveDayPlan(state.plan, day).dinner) || "Empty";
+                    return `
+                      <button class="meal-row" type="button" data-assign-dinner-day="${day.key}">
+                        <span class="meal-main">
+                          <span class="meal-name">${escapeHtml(day.title)}</span>
+                          <span class="meal-meta">${escapeHtml(current)}</span>
+                        </span>
+                      </button>`;
+                  })
+                  .join("")}
+              </div>
+            </div>
+            <div class="actions sheet-actions">
+              <button class="ghost" type="button" data-dinner-idea-panel="">Cancel</button>
+            </div>
+          </aside>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="sheet-backdrop" data-close-dinner-idea>
+        <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="dinner-idea-title">
+          <div class="sheet-body">
+            <p class="kicker">Dinner idea</p>
+            <h2 id="dinner-idea-title">${escapeHtml(meal.name)}</h2>
+            ${mealDetailBlocks(meal)}
+          </div>
+          <div class="actions sheet-actions">
+            <button class="primary" type="button" data-dinner-idea-panel="assign">Assign to a day</button>
+            <button class="ghost" type="button" data-edit-from-dinner-idea="${meal.id}">Edit</button>
+            <button class="ghost" type="button" data-close-dinner-idea>Close</button>
+          </div>
+        </aside>
+      </div>
+    `;
+  }
+
   function pickerSheet() {
     const { day, slot } = state.picker;
     const slotMeta = SLOTS.find((item) => item.id === slot);
     const current = slotText(resolveDayPlan(state.plan, day)[slot]);
-    const meals = filteredLibrary(state.pickerQuery, slot);
+    const meals = weekSlotReplaceMeals(slot, state.pickerQuery);
     return `
       <div class="sheet-backdrop" data-close-picker>
         <aside class="sheet" role="dialog" aria-modal="true">
           <p class="kicker">${escapeHtml(day.title)}</p>
-          <h2>Change ${slotMeta.label.toLowerCase()}</h2>
+          <h2>Add ${slotMeta.label.toLowerCase()}</h2>
           ${current ? `<p class="hint">Now: ${escapeHtml(current)}</p>` : ""}
+          <p class="hint">${escapeHtml(slotAssignHint(day, slot))}</p>
           <input class="search" type="search" placeholder="Search the library" value="${escapeAttr(state.pickerQuery)}" data-picker-search />
           <form class="form" data-one-off>
             <label>
@@ -841,10 +937,92 @@ export function createApp(root) {
       });
     });
 
-    root.querySelectorAll("[data-toggle-day]").forEach((button) => {
+    const dinnerSearch = root.querySelector("[data-dinner-search]");
+    if (dinnerSearch) {
+      dinnerSearch.addEventListener("input", () => {
+        state.dinnerQuery = dinnerSearch.value;
+        render();
+        const next = root.querySelector("[data-dinner-search]");
+        if (next) {
+          next.focus();
+          next.setSelectionRange(state.dinnerQuery.length, state.dinnerQuery.length);
+        }
+      });
+    }
+
+    root.querySelectorAll("[data-dinner-idea]").forEach((button) => {
       button.addEventListener("click", () => {
-        const id = button.dataset.toggleDay;
-        state.expandedDay = state.expandedDay === id ? null : id;
+        state.dinnerIdea = { mealId: button.dataset.dinnerIdea, panel: null, confirmDay: null };
+        render();
+      });
+    });
+
+    root.querySelectorAll("[data-close-dinner-idea]").forEach((node) => {
+      node.addEventListener("click", (event) => {
+        if (node.classList.contains("sheet-backdrop") && event.target !== node) return;
+        state.dinnerIdea = null;
+        render();
+      });
+    });
+
+    root.querySelectorAll("[data-dinner-idea-panel]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (!state.dinnerIdea) return;
+        state.dinnerIdea = {
+          ...state.dinnerIdea,
+          panel: button.dataset.dinnerIdeaPanel || null,
+          confirmDay: null,
+        };
+        render();
+      });
+    });
+
+    root.querySelectorAll("[data-assign-dinner-day]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (!state.dinnerIdea) return;
+        const day = weekDays().find((item) => item.key === button.dataset.assignDinnerDay);
+        if (!day) return;
+        const current = resolveDayPlan(state.plan, day).dinner;
+        if (slotHasMeal(current)) {
+          state.dinnerIdea = { ...state.dinnerIdea, panel: "confirm", confirmDay: day };
+          render();
+          return;
+        }
+        assignDinnerToDay(day, state.dinnerIdea.mealId);
+      });
+    });
+
+    const confirmDinnerAssign = root.querySelector("[data-confirm-dinner-assign]");
+    if (confirmDinnerAssign) {
+      confirmDinnerAssign.addEventListener("click", () => {
+        if (!state.dinnerIdea?.confirmDay) return;
+        assignDinnerToDay(state.dinnerIdea.confirmDay, state.dinnerIdea.mealId);
+      });
+    }
+
+    root.querySelectorAll("[data-edit-from-dinner-idea]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const meal = mealById(button.dataset.editFromDinnerIdea);
+        if (!meal) return;
+        state.dinnerIdea = null;
+        fillForm(meal);
+        go(`add/${meal.id}`);
+      });
+    });
+
+    root.querySelectorAll("[data-open-day]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const day = weekDays().find((item) => item.key === button.dataset.openDay);
+        if (!day) return;
+        state.daySheet = day;
+        render();
+      });
+    });
+
+    root.querySelectorAll("[data-close-day-sheet]").forEach((node) => {
+      node.addEventListener("click", (event) => {
+        if (node.classList.contains("sheet-backdrop") && event.target !== node) return;
+        state.daySheet = null;
         render();
       });
     });
@@ -937,11 +1115,7 @@ export function createApp(root) {
       button.addEventListener("click", () => {
         const meal = mealById(button.dataset.weekSlotPickMeal);
         if (!meal || !state.weekSlotDetail) return;
-        ensureDayPlan(state.plan, state.weekSlotDetail.day)[state.weekSlotDetail.slot] = {
-          mealId: meal.id,
-          label: meal.name,
-        };
-        savePlan(state.plan);
+        writeSlot(state.weekSlotDetail.day, state.weekSlotDetail.slot, { mealId: meal.id, label: meal.name });
         state.weekSlotDetail = null;
         toast("Weekly plan updated");
         render();
@@ -968,11 +1142,7 @@ export function createApp(root) {
         event.preventDefault();
         const value = String(new FormData(weekSlotOneOff).get("oneOff") || "").trim();
         if (!value || !state.weekSlotDetail) return;
-        ensureDayPlan(state.plan, state.weekSlotDetail.day)[state.weekSlotDetail.slot] = {
-          mealId: null,
-          label: value,
-        };
-        savePlan(state.plan);
+        writeSlot(state.weekSlotDetail.day, state.weekSlotDetail.slot, { mealId: null, label: value });
         state.weekSlotDetail = null;
         toast("Weekly plan updated");
         render();
@@ -983,11 +1153,7 @@ export function createApp(root) {
     if (confirmWeekSlotClear) {
       confirmWeekSlotClear.addEventListener("click", () => {
         if (!state.weekSlotDetail) return;
-        ensureDayPlan(state.plan, state.weekSlotDetail.day)[state.weekSlotDetail.slot] = {
-          mealId: null,
-          label: "",
-        };
-        savePlan(state.plan);
+        writeSlot(state.weekSlotDetail.day, state.weekSlotDetail.slot, emptySlot());
         state.weekSlotDetail = null;
         toast("Slot cleared");
         render();
@@ -1008,6 +1174,7 @@ export function createApp(root) {
       button.addEventListener("click", () => {
         const day = weekDays().find((item) => item.key === button.dataset.clearDay);
         if (!day || !dayHasMeals(state.plan, day)) return;
+        state.daySheet = null;
         state.clearConfirm = day;
         render();
       });
@@ -1315,8 +1482,7 @@ export function createApp(root) {
       button.addEventListener("click", () => {
         const meal = mealById(button.dataset.pickMeal);
         if (!meal || !state.picker) return;
-        ensureDayPlan(state.plan, state.picker.day)[state.picker.slot] = { mealId: meal.id, label: meal.name };
-        savePlan(state.plan);
+        writeSlot(state.picker.day, state.picker.slot, { mealId: meal.id, label: meal.name });
         state.picker = null;
         toast("Weekly plan updated");
         render();
@@ -1342,8 +1508,7 @@ export function createApp(root) {
         event.preventDefault();
         const value = String(new FormData(oneOff).get("oneOff") || "").trim();
         if (!value || !state.picker) return;
-        ensureDayPlan(state.plan, state.picker.day)[state.picker.slot] = { mealId: null, label: value };
-        savePlan(state.plan);
+        writeSlot(state.picker.day, state.picker.slot, { mealId: null, label: value });
         state.picker = null;
         toast("Weekly plan updated");
         render();
@@ -1354,8 +1519,7 @@ export function createApp(root) {
     if (clearSlot) {
       clearSlot.addEventListener("click", () => {
         if (!state.picker) return;
-        ensureDayPlan(state.plan, state.picker.day)[state.picker.slot] = { mealId: null, label: "" };
-        savePlan(state.plan);
+        writeSlot(state.picker.day, state.picker.slot, emptySlot());
         state.picker = null;
         toast("Slot cleared");
         render();
@@ -1386,6 +1550,43 @@ export function createApp(root) {
   function formFocus(selector) {
     const next = root.querySelector(selector);
     if (next) next.focus();
+  }
+
+  function writeSlot(day, slotId, value) {
+    setPlanSlot(state.plan, day, slotId, value);
+    savePlan(state.plan);
+  }
+
+  function assignDinnerToDay(day, mealId) {
+    const meal = mealById(mealId);
+    if (!meal || !day) return;
+    writeSlot(day, "dinner", { mealId: meal.id, label: meal.name });
+    state.dinnerIdea = null;
+    toast(`Dinner set for ${day.label}`);
+    render();
+  }
+
+  function slotClearHint(day, slotId) {
+    if (slotId === "dinner") {
+      return `This removes dinner on ${day.title} only. Other nights stay as they are.`;
+    }
+    const slotMeta = SLOTS.find((item) => item.id === slotId);
+    return `This clears the usual ${day.label} ${slotMeta.label.toLowerCase()} for every ${day.label}, not just ${day.dateLabel}.`;
+  }
+
+  function slotSwapHint(slotId) {
+    if (slotId === "dinner") {
+      return "Same meal type only. This switches the two dates’ dinners. An empty night is fine.";
+    }
+    return "Same meal type only. This switches the usual weekday meals, so future weeks follow the new order.";
+  }
+
+  function slotAssignHint(day, slotId) {
+    if (slotId === "dinner") {
+      return `This fills dinner on ${day.title} only.`;
+    }
+    const slotMeta = SLOTS.find((item) => item.id === slotId);
+    return `This updates every ${day.label} ${slotMeta.label.toLowerCase()}.`;
   }
 
   function parseWeekSlotRef(ref) {
