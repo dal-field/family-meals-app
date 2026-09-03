@@ -6,6 +6,16 @@ A phone-first, no-login meal planner for the Littlefields. Plan the week, keep t
 
 **Repo:** [https://github.com/dal-field/family-meals-app](https://github.com/dal-field/family-meals-app)
 
+### One-time Pages toggle (required)
+
+GitHub would not let Actions or the API create the Pages site (`Resource not accessible by integration`). A repo admin needs to flip this once, then re-run the deploy:
+
+1. Open [Settings → Pages](https://github.com/dal-field/family-meals-app/settings/pages)
+2. **Build and deployment → Source** → **GitHub Actions**
+3. Re-run the failed **Deploy to GitHub Pages** workflow: [Actions](https://github.com/dal-field/family-meals-app/actions/workflows/deploy-pages.yml) → latest run → **Re-run all jobs**
+
+If GitHub asks to approve the `github-pages` environment, do that under [Settings → Environments](https://github.com/dal-field/family-meals-app/settings/environments). After that, every push to `main` deploys automatically.
+
 No accounts. No backend. Changes stay on the device in `localStorage` and are merged with the baked-in food list so seed recipes are never lost.
 
 ## What a parent can do
