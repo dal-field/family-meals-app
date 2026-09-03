@@ -1,21 +1,23 @@
 export const FAMILY = "Littlefields";
 
 export const DAYS = [
-  { id: "monday", label: "Monday", short: "Mon" },
-  { id: "tuesday", label: "Tuesday", short: "Tue" },
-  { id: "wednesday", label: "Wednesday", short: "Wed" },
-  { id: "thursday", label: "Thursday", short: "Thu" },
-  { id: "friday", label: "Friday", short: "Fri" },
-  { id: "saturday", label: "Saturday", short: "Sat" },
-  { id: "sunday", label: "Sunday", short: "Sun" },
+  { id: "monday", label: "Monday", short: "Mon", compact: "M" },
+  { id: "tuesday", label: "Tuesday", short: "Tue", compact: "Tu" },
+  { id: "wednesday", label: "Wednesday", short: "Wed", compact: "W" },
+  { id: "thursday", label: "Thursday", short: "Thu", compact: "Th" },
+  { id: "friday", label: "Friday", short: "Fri", compact: "F" },
+  { id: "saturday", label: "Saturday", short: "Sat", compact: "Sa" },
+  { id: "sunday", label: "Sunday", short: "Sun", compact: "Su" },
 ];
 
 export const SLOTS = [
-  { id: "breakfast", label: "Breakfast" },
-  { id: "lunch", label: "Lunch" },
-  { id: "dinner", label: "Dinner" },
-  { id: "snack", label: "Snack" },
+  { id: "breakfast", label: "Breakfast", compact: "Brkfst" },
+  { id: "lunch", label: "Lunch", compact: "Lunch" },
+  { id: "dinner", label: "Dinner", compact: "Dinner" },
+  { id: "snack", label: "Snack", compact: "Snack" },
 ];
+
+export const RECURRING_SLOTS = ["breakfast", "lunch", "snack"];
 
 export const TYPE_ORDER = ["breakfast", "lunch", "dinner", "snack"];
 
@@ -442,12 +444,24 @@ export function isInCurrentPlanWeek(date, now = new Date()) {
   return day >= start && day < end;
 }
 
+export function emptySlot() {
+  return { mealId: null, label: "" };
+}
+
 export function emptySlots() {
   return {
-    breakfast: { mealId: null, label: "" },
-    lunch: { mealId: null, label: "" },
-    dinner: { mealId: null, label: "" },
-    snack: { mealId: null, label: "" },
+    breakfast: emptySlot(),
+    lunch: emptySlot(),
+    dinner: emptySlot(),
+    snack: emptySlot(),
+  };
+}
+
+export function emptyRecurring() {
+  return {
+    breakfast: emptySlot(),
+    lunch: emptySlot(),
+    snack: emptySlot(),
   };
 }
 
@@ -468,6 +482,7 @@ export function rollingDays(now = new Date()) {
       weekdayId,
       label: meta.label,
       short: meta.short,
+      compact: meta.compact,
       dateLabel: usShortDate(date),
       title: `${meta.label} (${usShortDate(date)})`,
       isToday: i === 0,

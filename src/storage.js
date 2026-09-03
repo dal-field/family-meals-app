@@ -1,4 +1,18 @@
-import { DAYS, SEED_MEALS, SEED_PLAN, SLOTS, emptySlots, normalizeIngredients, rollingDays, storeKey } from "./data.js";
+import {
+  DAYS,
+  RECURRING_SLOTS,
+  SEED_MEALS,
+  SEED_PLAN,
+  SLOTS,
+  emptyRecurring,
+  emptySlot,
+  emptySlots,
+  normalizeIngredients,
+  isInCurrentPlanWeek,
+  rollingDays,
+  storeKey,
+  todayDayId,
+} from "./data.js";
 
 const KEYS = {
   userMeals: "fm.userMeals",
@@ -150,30 +164,161 @@ function isOldWeekdayPlan(saved) {
   return Boolean(saved && !saved.version && DAYS.some((day) => saved[day.id]));
 }
 
-export function loadPlan(now = new Date()) {
-  const saved = read(KEYS.plan, null);
-  const dates = {};
+function dateKey(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+}
 
+function weekdayFromDateKey(key) {
+  return todayDayId(dateFromKey(key));
+}
+
+function dateFromKey(key) {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function seedWeekdays() {
+  const weekdays = {};
+  for (const day of DAYS) {
+    weekdays[day.id] = {
+      breakfast: clone(SEED_PLAN[day.id].breakfast),
+      lunch: clone(SEED_PLAN[day.id].lunch),
+      snack: clone(SEED_PLAN[day.id].snack),
+    };
+  }
+  return weekdays;
+}
+
+function seedCurrentWeekDinners(now) {
+  const dinners = {};
+  for (const day of rollingDays(now)) {
+    if (day.seedable) dinners[day.key] = clone(SEED_PLAN[day.weekdayId].dinner);
+  }
+  return dinners;
+}
+
+function collectV3Dates(saved, now) {
+  const dates = {};
   if (saved?.version === 3 && saved.dates && typeof saved.dates === "object") {
     for (const [key, value] of Object.entries(saved.dates)) {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(key)) dates[key] = dayFromSaved(value);
+      if (dateKey(key)) dates[key] = dayFromSaved(value);
     }
-  } else if (isOldWeekdayPlan(saved)) {
+    return dates;
+  }
+  if (isOldWeekdayPlan(saved)) {
     for (const day of rollingDays(now)) {
       if (day.seedable && saved[day.weekdayId]) {
         dates[day.key] = dayFromSaved(saved[day.weekdayId]);
       }
     }
-    write(KEYS.plan, { version: 3, dates });
+  }
+  return dates;
+}
+
+export function freshPlan(now = new Date()) {
+  return {
+    weekdays: seedWeekdays(),
+    dinners: seedCurrentWeekDinners(now),
+  };
+}
+
+export function migratePlanToV4(saved, now = new Date()) {
+  if (saved?.version === 4 && saved.weekdays && typeof saved.weekdays === "object") {
+    return normalizeV4(saved);
   }
 
-  return { dates };
+  if (!saved) return freshPlan(now);
+
+  const dates = collectV3Dates(saved, now);
+  const weekdays = seedWeekdays();
+  const visible = rollingDays(now);
+
+  for (const meta of DAYS) {
+    const matches = Object.entries(dates)
+      .filter(([key]) => weekdayFromDateKey(key) === meta.id)
+      .sort(([left], [right]) => left.localeCompare(right));
+    if (!matches.length) continue;
+
+    const visibleDay = visible.find((item) => item.weekdayId === meta.id);
+    const preferred = visibleDay && dates[visibleDay.key]
+      ? [visibleDay.key, dates[visibleDay.key]]
+      : matches[matches.length - 1];
+    const [key, day] = preferred;
+
+    for (const slotId of RECURRING_SLOTS) {
+      const stored = day[slotId];
+      if (slotHasMeal(stored)) {
+        weekdays[meta.id][slotId] = clone(stored);
+      } else if (isInCurrentPlanWeek(dateFromKey(key), now)) {
+        weekdays[meta.id][slotId] = clone(stored || emptySlot());
+      }
+    }
+  }
+
+  const dinners = {};
+  for (const [key, day] of Object.entries(dates)) {
+    dinners[key] = clone(day.dinner);
+  }
+  for (const day of rollingDays(now)) {
+    if (day.seedable && !Object.prototype.hasOwnProperty.call(dinners, day.key)) {
+      dinners[day.key] = clone(SEED_PLAN[day.weekdayId].dinner);
+    }
+  }
+
+  return { weekdays, dinners };
+}
+
+function normalizeV4(saved) {
+  const weekdays = {};
+  for (const day of DAYS) {
+    const raw = saved.weekdays?.[day.id];
+    if (raw && typeof raw === "object") {
+      weekdays[day.id] = {
+        breakfast: normalizeSlot(raw.breakfast) || emptySlot(),
+        lunch: normalizeSlot(raw.lunch) || emptySlot(),
+        snack: normalizeSlot(raw.snack) || emptySlot(),
+      };
+    } else {
+      weekdays[day.id] = {
+        breakfast: clone(SEED_PLAN[day.id].breakfast),
+        lunch: clone(SEED_PLAN[day.id].lunch),
+        snack: clone(SEED_PLAN[day.id].snack),
+      };
+    }
+  }
+
+  const dinners = {};
+  if (saved.dinners && typeof saved.dinners === "object") {
+    for (const [key, value] of Object.entries(saved.dinners)) {
+      if (!dateKey(key)) continue;
+      dinners[key] = normalizeSlot(value) || emptySlot();
+    }
+  }
+
+  return { weekdays, dinners };
+}
+
+export function loadPlan(now = new Date()) {
+  const saved = read(KEYS.plan, null);
+  if (saved?.version === 4 && saved.weekdays && typeof saved.weekdays === "object") {
+    return normalizeV4(saved);
+  }
+  const plan = migratePlanToV4(saved, now);
+  write(KEYS.plan, { version: 4, weekdays: plan.weekdays, dinners: plan.dinners });
+  return plan;
 }
 
 export function resolveDayPlan(plan, day) {
-  if (plan.dates[day.key]) return plan.dates[day.key];
-  if (day.seedable) return clone(SEED_PLAN[day.weekdayId]);
-  return emptySlots();
+  const weekday = plan.weekdays?.[day.weekdayId] || emptyRecurring();
+  const dinner = Object.prototype.hasOwnProperty.call(plan.dinners || {}, day.key)
+    ? plan.dinners[day.key]
+    : emptySlot();
+  return {
+    breakfast: clone(weekday.breakfast || emptySlot()),
+    lunch: clone(weekday.lunch || emptySlot()),
+    snack: clone(weekday.snack || emptySlot()),
+    dinner: clone(dinner || emptySlot()),
+  };
 }
 
 export function slotHasMeal(slot) {
@@ -186,31 +331,43 @@ export function dayHasMeals(plan, day) {
   return SLOTS.some((slot) => slotHasMeal(slots[slot.id]));
 }
 
-export function clearDayPlan(plan, day) {
-  plan.dates[day.key] = emptySlots();
-  return plan.dates[day.key];
+export function getPlanSlot(plan, day, slotId) {
+  return resolveDayPlan(plan, day)[slotId] || emptySlot();
 }
 
-export function ensureDayPlan(plan, day) {
-  if (!plan.dates[day.key]) {
-    plan.dates[day.key] = day.seedable ? clone(SEED_PLAN[day.weekdayId]) : emptySlots();
+export function setPlanSlot(plan, day, slotId, value) {
+  const next = normalizeSlot(value) || emptySlot();
+  if (slotId === "dinner") {
+    if (!plan.dinners) plan.dinners = {};
+    plan.dinners[day.key] = next;
+    return next;
   }
-  return plan.dates[day.key];
+  if (!RECURRING_SLOTS.includes(slotId)) return emptySlot();
+  if (!plan.weekdays) plan.weekdays = seedWeekdays();
+  if (!plan.weekdays[day.weekdayId]) plan.weekdays[day.weekdayId] = emptyRecurring();
+  plan.weekdays[day.weekdayId][slotId] = next;
+  return next;
+}
+
+export function clearDayPlan(plan, day) {
+  setPlanSlot(plan, day, "dinner", emptySlot());
+  for (const slotId of RECURRING_SLOTS) {
+    setPlanSlot(plan, day, slotId, emptySlot());
+  }
+  return resolveDayPlan(plan, day);
 }
 
 export function swapDaySlots(plan, fromDay, toDay, slotId) {
   if (!fromDay || !toDay || fromDay.key === toDay.key) return plan;
   if (!SLOTS.some((slot) => slot.id === slotId)) return plan;
-  const from = ensureDayPlan(plan, fromDay);
-  const to = ensureDayPlan(plan, toDay);
-  const held = clone(from[slotId]);
-  from[slotId] = clone(to[slotId]);
-  to[slotId] = held;
+  const held = clone(getPlanSlot(plan, fromDay, slotId));
+  setPlanSlot(plan, fromDay, slotId, getPlanSlot(plan, toDay, slotId));
+  setPlanSlot(plan, toDay, slotId, held);
   return plan;
 }
 
 export function savePlan(plan) {
-  write(KEYS.plan, { version: 3, dates: plan.dates });
+  write(KEYS.plan, { version: 4, weekdays: plan.weekdays, dinners: plan.dinners });
 }
 
 function normalizeGroceryItem(item) {
