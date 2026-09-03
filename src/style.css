@@ -93,6 +93,42 @@ a {
   font-size: 0.68rem;
 }
 
+.week-nav {
+  display: grid;
+  justify-items: center;
+  margin-bottom: 8px;
+}
+
+.week-nav .kicker {
+  margin-bottom: 2px;
+}
+
+.week-nav-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  width: 100%;
+  gap: 2px;
+}
+
+.week-nav-row h1 {
+  margin: 0;
+  text-align: center;
+  font-size: 1.28rem;
+}
+
+.week-nav-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
 .topbar {
   display: flex;
   align-items: flex-start;
@@ -324,8 +360,15 @@ h2 {
     margin-bottom: 16px;
   }
 
-  .app-shell.is-week h1 {
+  .app-shell.is-week h1,
+  .week-nav-row h1 {
     font-size: 2.15rem;
+  }
+
+  .week-nav-btn {
+    min-width: 52px;
+    min-height: 52px;
+    font-size: 2.1rem;
   }
 
   .app-shell.is-week .kicker {

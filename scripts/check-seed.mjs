@@ -1,4 +1,4 @@
-import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, emptySlot, normalizeIngredients, rollingDays } from "../src/data.js";
+import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, emptySlot, formatWeekRange, localDateKey, normalizeIngredients, rollingDays, shiftMonday } from "../src/data.js";
 import { scaleSize } from "../src/photos.js";
 import { clearDayPlan, dayHasMeals, freshPlan, migrateLegacyGrocery, migratePlanToV4, resolveDayPlan, setPlanSlot, slotHasMeal, swapDaySlots } from "../src/storage.js";
 
@@ -180,6 +180,35 @@ if (rolledThursday.breakfast.mealId !== "protein-pancakes" || rolledThursday.lun
 }
 if (slotHasMeal(rolledThursday.dinner)) {
   console.error("Next week Thursday dinner should stay blank", rolledThursday.dinner);
+  process.exit(1);
+}
+
+const laterNow = new Date("2026-09-17T12:00:00");
+const pastWeek = rollingDays(thursday, laterNow);
+const historicThursday = dayByWeekday(pastWeek, "thursday");
+if (historicThursday.key !== "2026-09-03") {
+  console.error("Browsing back should still open the original Thursday date", historicThursday);
+  process.exit(1);
+}
+if (resolveDayPlan(plan, historicThursday).dinner.mealId !== "ck-green-bean-casserole") {
+  console.error("Past dinners must remain when navigating back to that week", resolveDayPlan(plan, historicThursday).dinner);
+  process.exit(1);
+}
+
+if (formatWeekRange(new Date("2026-04-03T12:00:00"), new Date("2026-04-09T12:00:00")) !== "Apr 3 – 9") {
+  console.error("Same-month week range should omit the repeated month");
+  process.exit(1);
+}
+if (formatWeekRange(new Date("2026-08-31T12:00:00"), new Date("2026-09-06T12:00:00")) !== "Aug 31 – Sep 6") {
+  console.error("Cross-month week range should name both months");
+  process.exit(1);
+}
+if (formatWeekRange(new Date("2026-12-28T12:00:00"), new Date("2027-01-03T12:00:00")) !== "Dec 28 – Jan 3, 2027") {
+  console.error("Year-crossing week range should include the end year");
+  process.exit(1);
+}
+if (localDateKey(shiftMonday(thursday, 1)) !== "2026-09-07" || localDateKey(shiftMonday(thursday, -1)) !== "2026-08-24") {
+  console.error("Week arrows should move by full Monday–Sunday weeks");
   process.exit(1);
 }
 

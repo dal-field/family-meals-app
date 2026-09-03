@@ -4,8 +4,11 @@ import {
   SLOTS,
   TYPE_ORDER,
   emptySlot,
+  formatWeekRange,
+  mondayOfWeek,
   normalizeIngredients,
   rollingDays,
+  shiftMonday,
   slugify,
   storeColor,
 } from "./data.js";
@@ -85,6 +88,7 @@ export function createApp(root) {
     photoDraft: emptyPhotoDraft(),
     photoCache: {},
     photoViewer: null,
+    weekAnchor: mondayOfWeek(new Date()),
   };
 
   let toastTimer = 0;
@@ -370,12 +374,13 @@ export function createApp(root) {
   function render() {
     root.innerHTML = `
       <div class="app-shell ${state.tab === "week" ? "is-week" : ""}">
+        ${state.tab === "week" ? weekNavHeader() : `
         <header class="topbar">
           <div>
             <p class="kicker">${FAMILY}</p>
             <h1>${headerTitle()}</h1>
           </div>
-        </header>
+        </header>`}
         ${view()}
       </div>
       <nav class="nav" aria-label="Main">
@@ -402,10 +407,29 @@ export function createApp(root) {
   }
 
   function headerTitle() {
-    if (state.tab === "week") return "This week";
     if (state.tab === "meals") return "Meals";
     if (state.tab === "groceries") return "Groceries";
     return state.editingId ? "Edit meal" : "Add meal";
+  }
+
+  function weekNavHeader() {
+    const days = weekDays();
+    const start = dateFromDayKey(days[0].key);
+    const end = dateFromDayKey(days[6].key);
+    return `
+      <header class="topbar week-nav">
+        <p class="kicker">${FAMILY}</p>
+        <div class="week-nav-row">
+          <button class="week-nav-btn" type="button" data-week-shift="-1" aria-label="Previous week">‹</button>
+          <h1>${escapeHtml(formatWeekRange(start, end))}</h1>
+          <button class="week-nav-btn" type="button" data-week-shift="1" aria-label="Next week">›</button>
+        </div>
+      </header>`;
+  }
+
+  function dateFromDayKey(key) {
+    const [year, month, day] = String(key).split("-").map(Number);
+    return new Date(year, month - 1, day);
   }
 
   function view() {
@@ -416,7 +440,7 @@ export function createApp(root) {
   }
 
   function weekDays() {
-    return rollingDays();
+    return rollingDays(state.weekAnchor, new Date());
   }
 
   function weekView() {
@@ -460,8 +484,7 @@ export function createApp(root) {
       </section>
 
       <section class="section dinner-ideas">
-        <h2>Dinner ideas</h2>
-        <p class="hint">Tap a dinner to see details and assign it to a night.</p>
+        <h2>Dinners</h2>
         <input
           class="search"
           type="search"
@@ -1132,6 +1155,15 @@ export function createApp(root) {
         state.ingredientDraft = "";
         clearPhotoDraft();
         go(button.dataset.tab);
+      });
+    });
+
+    root.querySelectorAll("[data-week-shift]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const weeks = Number(button.dataset.weekShift);
+        if (!weeks) return;
+        state.weekAnchor = shiftMonday(state.weekAnchor, weeks);
+        render();
       });
     });
 

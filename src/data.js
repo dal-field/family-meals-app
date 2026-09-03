@@ -469,8 +469,8 @@ export function daysStartingToday(now = new Date()) {
   return rollingDays(now).map((day) => DAYS.find((item) => item.id === day.weekdayId));
 }
 
-export function rollingDays(now = new Date()) {
-  const start = mondayOfWeek(now);
+export function rollingDays(weekOf = new Date(), now = weekOf) {
+  const start = mondayOfWeek(weekOf);
   const todayKey = localDateKey(startOfLocalDay(now));
   const days = [];
   for (let i = 0; i < 7; i += 1) {
@@ -492,6 +492,28 @@ export function rollingDays(now = new Date()) {
     });
   }
   return days;
+}
+
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+export function shiftMonday(weekOf, weeks) {
+  const start = mondayOfWeek(weekOf);
+  start.setDate(start.getDate() + weeks * 7);
+  return start;
+}
+
+export function formatWeekRange(startDate, endDate) {
+  const start = startOfLocalDay(startDate);
+  const end = startOfLocalDay(endDate);
+  const startMonth = MONTH_SHORT[start.getMonth()];
+  const endMonth = MONTH_SHORT[end.getMonth()];
+  const startDay = start.getDate();
+  const endDay = end.getDate();
+  const startYear = start.getFullYear();
+  const endYear = end.getFullYear();
+  if (startYear !== endYear) return `${startMonth} ${startDay} – ${endMonth} ${endDay}, ${endYear}`;
+  if (startMonth === endMonth) return `${startMonth} ${startDay} – ${endDay}`;
+  return `${startMonth} ${startDay} – ${endMonth} ${endDay}`;
 }
 
 const STORE_COLORS = {
