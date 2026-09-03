@@ -26,6 +26,7 @@ import {
   slotHasMeal,
   swapDaySlots,
 } from "./storage.js";
+import { compressImageFile, deleteMealPhoto, getMealPhoto, putMealPhoto } from "./photos.js";
 
 const TYPE_LABEL = {
   breakfast: "Breakfast",
@@ -50,6 +51,10 @@ function emptyForm() {
     ingredients: [],
     makeAhead: false,
   };
+}
+
+function emptyPhotoDraft() {
+  return { status: "empty" };
 }
 
 export function createApp(root) {
@@ -77,6 +82,9 @@ export function createApp(root) {
     storeDialog: null,
     storeNameDraft: "",
     toast: "",
+    photoDraft: emptyPhotoDraft(),
+    photoCache: {},
+    photoViewer: null,
   };
 
   let toastTimer = 0;
@@ -126,6 +134,7 @@ export function createApp(root) {
     } else if (state.tab === "add" && !extra && !state.editingId) {
       state.form = emptyForm();
       state.ingredientDraft = "";
+      if (state.photoDraft.status !== "empty") clearPhotoDraft();
     }
   }
 
@@ -149,6 +158,7 @@ export function createApp(root) {
       makeAhead: Boolean(meal.makeAhead),
     };
     state.ingredientDraft = "";
+    void loadPhotoDraft(meal.id);
   }
 
   function filteredLibrary(query, type) {
@@ -173,6 +183,188 @@ export function createApp(root) {
     if (SEED_MEALS.some((seed) => seed.id === meal.id)) saveSeedEdit(meal);
     else saveUserMeal(meal);
     refresh();
+  }
+
+  function revokePhotoUrls(entry) {
+    if (!entry) return;
+    if (entry.url) URL.revokeObjectURL(entry.url);
+    if (entry.thumbUrl) URL.revokeObjectURL(entry.thumbUrl);
+  }
+
+  function clearPhotoDraft() {
+    revokePhotoUrls(state.photoDraft);
+    state.photoDraft = emptyPhotoDraft();
+  }
+
+  function cachePhotoRecord(mealId, record) {
+    const previous = state.photoCache[mealId];
+    if (previous && previous !== "none") revokePhotoUrls(previous);
+    if (!record?.blob) {
+      state.photoCache[mealId] = "none";
+      return null;
+    }
+    const cached = {
+      url: URL.createObjectURL(record.blob),
+      thumbUrl: URL.createObjectURL(record.thumbBlob || record.blob),
+    };
+    state.photoCache[mealId] = cached;
+    return cached;
+  }
+
+  async function ensurePhotoCached(mealId) {
+    if (!mealId) return null;
+    if (state.photoCache[mealId] === "none") return null;
+    if (state.photoCache[mealId]) return state.photoCache[mealId];
+    try {
+      const record = await getMealPhoto(mealId);
+      return cachePhotoRecord(mealId, record);
+    } catch {
+      state.photoCache[mealId] = "none";
+      return null;
+    }
+  }
+
+  async function loadPhotoDraft(mealId) {
+    state.photoDraft = { status: "loading" };
+    try {
+      const record = await getMealPhoto(mealId);
+      if (state.editingId !== mealId) return;
+      if (!record?.blob) {
+        state.photoDraft = emptyPhotoDraft();
+      } else {
+        const cached = cachePhotoRecord(mealId, record);
+        state.photoDraft = {
+          status: "ready",
+          blob: record.blob,
+          thumbBlob: record.thumbBlob || record.blob,
+          mime: record.mime,
+          width: record.width,
+          height: record.height,
+          url: cached.url,
+          thumbUrl: cached.thumbUrl,
+        };
+      }
+    } catch {
+      if (state.editingId !== mealId) return;
+      state.photoDraft = emptyPhotoDraft();
+    }
+    if (state.tab === "add") render();
+  }
+
+  async function attachPhotoFromFile(file) {
+    if (!file) return;
+    try {
+      const compressed = await compressImageFile(file);
+      revokePhotoUrls(state.photoDraft);
+      state.photoDraft = {
+        status: "ready",
+        ...compressed,
+        url: URL.createObjectURL(compressed.blob),
+        thumbUrl: URL.createObjectURL(compressed.thumbBlob),
+      };
+      render();
+    } catch {
+      toast("Could not save the photo on this phone");
+    }
+  }
+
+  async function persistMealPhoto(mealId) {
+    try {
+      if (state.photoDraft.status === "ready" && state.photoDraft.blob) {
+        await putMealPhoto(mealId, state.photoDraft);
+        cachePhotoRecord(mealId, state.photoDraft);
+      } else if (state.photoDraft.status === "removed") {
+        await deleteMealPhoto(mealId);
+        cachePhotoRecord(mealId, null);
+      }
+    } catch {
+      toast("Could not save the photo on this phone");
+    }
+    clearPhotoDraft();
+  }
+
+  function photoField() {
+    const draft = state.photoDraft;
+    if (draft.status === "loading") {
+      return `
+        <div class="photo-field">
+          <div class="hint">Photo</div>
+          <p class="hint">Loading photo…</p>
+        </div>`;
+    }
+    if (draft.status === "ready") {
+      return `
+        <div class="photo-field">
+          <div class="hint">Photo</div>
+          <div class="photo-preview">
+            <img src="${escapeAttr(draft.thumbUrl || draft.url)}" alt="Attached meal photo" />
+            <div class="photo-preview-actions">
+              <label class="ghost photo-file-btn">
+                Replace
+                <input class="sr-only" type="file" accept="image/*" data-photo-choose />
+              </label>
+              <button class="danger" type="button" data-photo-remove>Remove</button>
+            </div>
+          </div>
+        </div>`;
+    }
+    return `
+      <div class="photo-field">
+        <div class="hint">Photo</div>
+        <div class="photo-pickers">
+          <label class="ghost photo-file-btn">
+            Take photo
+            <input class="sr-only" type="file" accept="image/*" capture="environment" data-photo-capture />
+          </label>
+          <label class="ghost photo-file-btn">
+            Choose photo
+            <input class="sr-only" type="file" accept="image/*" data-photo-choose />
+          </label>
+        </div>
+      </div>`;
+  }
+
+  function mealPhotoButton(mealId, mealName) {
+    if (!mealId) return "";
+    const cached = state.photoCache[mealId];
+    if (cached === "none") return "";
+    const src = cached && cached !== "none" ? cached.thumbUrl || cached.url : "";
+    return `
+      <button
+        class="meal-photo-btn ${src ? "" : "is-pending"}"
+        type="button"
+        data-open-photo="${mealId}"
+        ${src ? "" : "hidden"}
+      >
+        <img ${src ? `src="${escapeAttr(src)}"` : ""} data-meal-photo="${mealId}" alt="${escapeAttr(mealName)} photo" />
+        <span>Photo</span>
+      </button>`;
+  }
+
+  function photoViewerSheet() {
+    const viewer = state.photoViewer;
+    if (!viewer) return "";
+    return `
+      <div class="photo-viewer" data-close-photo-viewer role="dialog" aria-modal="true" aria-label="Meal photo">
+        <button class="photo-viewer-close" type="button" data-close-photo-viewer>Close</button>
+        <img src="${escapeAttr(viewer.url)}" alt="${escapeAttr(viewer.title || "Meal photo")}" />
+      </div>`;
+  }
+
+  async function hydrateMealPhotos() {
+    const images = [...root.querySelectorAll("[data-meal-photo]")];
+    await Promise.all(
+      images.map(async (img) => {
+        const cached = await ensurePhotoCached(img.dataset.mealPhoto);
+        const button = img.closest("[data-open-photo]");
+        if (!cached) {
+          if (button) button.hidden = true;
+          return;
+        }
+        img.src = cached.thumbUrl || cached.url;
+        if (button) button.hidden = false;
+      })
+    );
   }
 
   function render() {
@@ -201,10 +393,12 @@ export function createApp(root) {
       ${state.weekSlotDetail ? weekSlotDetailSheet() : ""}
       ${state.dinnerIdea ? dinnerIdeaSheet() : ""}
       ${state.storeDialog ? storeDialogSheet() : ""}
+      ${state.photoViewer ? photoViewerSheet() : ""}
       ${state.toast ? `<div class="toast" role="status">${escapeHtml(state.toast)}</div>` : ""}
     `;
 
     bind();
+    hydrateMealPhotos();
   }
 
   function headerTitle() {
@@ -482,6 +676,7 @@ export function createApp(root) {
           Recipe URL
           <input name="recipeUrl" type="text" inputmode="url" autocomplete="off" placeholder="https://" value="${escapeAttr(form.recipeUrl)}" />
         </label>
+        ${photoField()}
         <div>
           <div class="hint" style="margin-bottom:8px">Ingredients</div>
           <div class="ingredient-add">
@@ -529,6 +724,7 @@ export function createApp(root) {
   function mealDetailBlocks(meal) {
     const ingredients = normalizeIngredients(meal.ingredients);
     return `
+      ${mealPhotoButton(meal.id, meal.name)}
       <div class="badge-row">
         ${meal.types.map((type) => `<span class="badge">${TYPE_LABEL[type]}</span>`).join("")}
         ${meal.makeAhead ? `<span class="badge">Make-ahead</span>` : ""}
@@ -934,6 +1130,7 @@ export function createApp(root) {
         state.editingId = null;
         state.form = emptyForm();
         state.ingredientDraft = "";
+        clearPhotoDraft();
         go(button.dataset.tab);
       });
     });
@@ -1346,7 +1543,7 @@ export function createApp(root) {
 
     const form = root.querySelector("[data-meal-form]");
     if (form) {
-      form.addEventListener("submit", (event) => {
+      form.addEventListener("submit", async (event) => {
         event.preventDefault();
         readMealForm(form);
         const name = state.form.name.trim();
@@ -1362,12 +1559,30 @@ export function createApp(root) {
           makeAhead: state.form.makeAhead,
         };
         persistMeal(meal);
+        await persistMealPhoto(meal.id);
         state.editingId = null;
         state.form = emptyForm();
         state.ingredientDraft = "";
         toast("Saved on this phone");
         go(`meals/${meal.id}`);
       });
+
+      form.querySelectorAll("[data-photo-capture], [data-photo-choose]").forEach((input) => {
+        input.addEventListener("change", () => {
+          const file = input.files?.[0];
+          input.value = "";
+          void attachPhotoFromFile(file);
+        });
+      });
+
+      const removePhoto = form.querySelector("[data-photo-remove]");
+      if (removePhoto) {
+        removePhoto.addEventListener("click", () => {
+          revokePhotoUrls(state.photoDraft);
+          state.photoDraft = { status: "removed" };
+          render();
+        });
+      }
 
       const draft = form.querySelector("[data-ingredient-draft]");
       if (draft) {
@@ -1405,6 +1620,7 @@ export function createApp(root) {
         state.editingId = null;
         state.form = emptyForm();
         state.ingredientDraft = "";
+        clearPhotoDraft();
         go("add");
       });
     }
@@ -1450,7 +1666,10 @@ export function createApp(root) {
     root.querySelectorAll("[data-delete-meal]").forEach((button) => {
       button.addEventListener("click", () => {
         if (!confirm("Delete this meal from this phone?")) return;
-        deleteUserMeal(button.dataset.deleteMeal);
+        const mealId = button.dataset.deleteMeal;
+        deleteUserMeal(mealId);
+        cachePhotoRecord(mealId, null);
+        void deleteMealPhoto(mealId).catch(() => undefined);
         refresh();
         toast("Meal deleted");
         go("meals");
@@ -1526,6 +1745,28 @@ export function createApp(root) {
         render();
       });
     }
+
+    root.querySelectorAll("[data-open-photo]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const mealId = button.dataset.openPhoto;
+        const cached = await ensurePhotoCached(mealId);
+        if (!cached) {
+          toast("Photo is not available");
+          return;
+        }
+        const meal = mealById(mealId);
+        state.photoViewer = { url: cached.url, title: meal?.name || "Meal photo" };
+        render();
+      });
+    });
+
+    root.querySelectorAll("[data-close-photo-viewer]").forEach((node) => {
+      node.addEventListener("click", (event) => {
+        if (node.classList.contains("photo-viewer") && event.target !== node) return;
+        state.photoViewer = null;
+        render();
+      });
+    });
   }
 
   function readMealForm(form) {
