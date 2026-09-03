@@ -1,5 +1,5 @@
 import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, daysStartingToday, rollingDays } from "../src/data.js";
-import { resolveDayPlan } from "../src/storage.js";
+import { clearDayPlan, dayHasMeals, resolveDayPlan } from "../src/storage.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
 const required = [
@@ -135,6 +135,40 @@ if (thursdayPlan.dinner.mealId !== "ck-green-bean-casserole") {
 const nextMonday = resolveDayPlan(emptyPlan, rolling[4]);
 if (nextMonday.breakfast.label || nextMonday.dinner.label) {
   console.error("Next Monday should start empty", nextMonday);
+  process.exit(1);
+}
+
+const writable = { dates: {} };
+if (!dayHasMeals(writable, rolling[0])) {
+  console.error("Seeded Thursday should report meals");
+  process.exit(1);
+}
+if (dayHasMeals(writable, rolling[4])) {
+  console.error("Empty next Monday should not report meals");
+  process.exit(1);
+}
+
+clearDayPlan(writable, rolling[0]);
+if (dayHasMeals(writable, rolling[0])) {
+  console.error("Cleared Thursday should not still report meals");
+  process.exit(1);
+}
+const clearedThursday = resolveDayPlan(writable, rolling[0]);
+if (clearedThursday.breakfast.mealId || clearedThursday.dinner.label) {
+  console.error("Cleared Thursday should stay empty and not re-seed", clearedThursday);
+  process.exit(1);
+}
+if (!writable.dates["2026-09-03"]) {
+  console.error("Clear must persist empty slots on the concrete date");
+  process.exit(1);
+}
+if (writable.dates["2026-09-04"] || writable.dates["2026-09-07"]) {
+  console.error("Clear must not touch other dates", writable.dates);
+  process.exit(1);
+}
+const fridayAfterClear = resolveDayPlan(writable, rolling[1]);
+if (fridayAfterClear.dinner.mealId !== "beef-stroganoff") {
+  console.error("Friday should still use seed dinner after Thursday clear");
   process.exit(1);
 }
 

@@ -218,6 +218,26 @@ h2 {
   padding: 0 6px 6px;
 }
 
+.day-clear {
+  display: flex;
+  justify-content: center;
+  padding: 2px 4px 0;
+}
+
+.text-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 650;
+  min-height: 40px;
+  padding: 0 8px;
+}
+
+.sheet-confirm {
+  width: min(400px, 100%);
+}
+
 .today-pill {
   background: var(--sage-soft);
   color: var(--sage-deep);
