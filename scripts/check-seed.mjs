@@ -1,6 +1,6 @@
 import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, emptySlot, formatWeekRange, localDateKey, normalizeIngredients, rollingDays, shiftMonday } from "../src/data.js";
 import { resolvedMealPhotoSrc, scaleSize } from "../src/photos.js";
-import { clearDayPlan, dayHasMeals, freshPlan, migrateLegacyGrocery, migratePlanToV4, resolveDayPlan, setPlanSlot, slotHasMeal, swapDaySlots } from "../src/storage.js";
+import { clearDayPlan, clearImprovisedSeedNotes, dayHasMeals, freshPlan, loadMeals, migrateLegacyGrocery, migratePlanToV4, resolveDayPlan, saveSeedEdit, setPlanSlot, slotHasMeal, swapDaySlots } from "../src/storage.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
 const required = [
@@ -457,6 +457,101 @@ if (resolvedMealPhotoSrc({ url: "blob:full", thumbUrl: "blob:thumb" }) !== "blob
 }
 if (resolvedMealPhotoSrc({ url: "blob:full" }) !== "blob:full") {
   console.error("Cached meal photos should fall back to the full src");
+  process.exit(1);
+}
+
+const seededWithNotes = SEED_MEALS.filter((meal) => meal.notes);
+if (seededWithNotes.length) {
+  console.error("Seed meals must not carry invented notes", seededWithNotes.map((meal) => meal.id));
+  process.exit(1);
+}
+if (SEED_PLAN.monday.dinner.label !== "Spaghetti, toast, peas") {
+  console.error("Weekly-plan dinner labels with sides must stay", SEED_PLAN.monday.dinner);
+  process.exit(1);
+}
+if (SEED_PLAN.tuesday.dinner.label !== "Burritos, rice, corn") {
+  console.error("Tuesday dinner label must keep rice and corn", SEED_PLAN.tuesday.dinner);
+  process.exit(1);
+}
+if (!SEED_MEALS.find((meal) => meal.id === "burritos")?.makeAhead) {
+  console.error("Burritos must stay make-ahead");
+  process.exit(1);
+}
+
+const migratedNotes = clearImprovisedSeedNotes({
+  seedEdits: {
+    burritos: { notes: "Works for breakfast or dinner. Make ahead. Tuesday dinner is often served with rice and corn." },
+    taquitos: { notes: "Baked creamy chicken taquitos.", recipeUrl: "https://ourbestbites.com/baked-creamy-chicken-taquitos/" },
+  },
+  userMeals: [
+    { id: "user-leftover-soup", seed: false, notes: "Parent-typed leftover note" },
+    { id: "mystery-seed", seed: true, notes: "Invented seed copy" },
+  ],
+});
+if (migratedNotes.seedEdits.burritos.notes || migratedNotes.seedEdits.taquitos.notes) {
+  console.error("Seed edits must drop invented notes", migratedNotes.seedEdits);
+  process.exit(1);
+}
+if (!migratedNotes.seedEdits.taquitos.recipeUrl.includes("ourbestbites.com")) {
+  console.error("Clearing seed notes must keep recipe URLs", migratedNotes.seedEdits.taquitos);
+  process.exit(1);
+}
+if (migratedNotes.userMeals[0].notes !== "Parent-typed leftover note") {
+  console.error("User-created meal notes must stay", migratedNotes.userMeals[0]);
+  process.exit(1);
+}
+if (migratedNotes.userMeals[1].notes) {
+  console.error("seed:true records must lose invented notes", migratedNotes.userMeals[1]);
+  process.exit(1);
+}
+
+const memory = new Map();
+globalThis.localStorage = {
+  getItem(key) {
+    return memory.has(key) ? memory.get(key) : null;
+  },
+  setItem(key, value) {
+    memory.set(key, String(value));
+  },
+  removeItem(key) {
+    memory.delete(key);
+  },
+};
+memory.set(
+  "fm.seedEdits",
+  JSON.stringify({
+    burritos: { notes: "Works for breakfast or dinner. Make ahead. Tuesday dinner is often served with rice and corn." },
+  })
+);
+memory.set(
+  "fm.userMeals",
+  JSON.stringify([
+    { id: "user-leftover-soup", name: "Leftover soup", types: ["dinner"], notes: "Parent-typed leftover note", seed: false, ingredients: [] },
+  ])
+);
+
+const firstLoad = loadMeals();
+if (firstLoad.find((meal) => meal.id === "burritos")?.notes) {
+  console.error("First load should wipe invented seed notes from fm.seedEdits");
+  process.exit(1);
+}
+if (firstLoad.find((meal) => meal.id === "user-leftover-soup")?.notes !== "Parent-typed leftover note") {
+  console.error("First load must keep user-created notes");
+  process.exit(1);
+}
+
+saveSeedEdit({
+  id: "burritos",
+  name: "Burritos",
+  types: ["breakfast", "dinner"],
+  notes: "Parent typed this later",
+  recipeUrl: "",
+  ingredients: [],
+  makeAhead: true,
+});
+const secondLoad = loadMeals();
+if (secondLoad.find((meal) => meal.id === "burritos")?.notes !== "Parent typed this later") {
+  console.error("After the one-time migration, later seed edits must keep parent notes");
   process.exit(1);
 }
 

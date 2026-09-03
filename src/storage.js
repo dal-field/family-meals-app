@@ -20,7 +20,57 @@ const KEYS = {
   hidden: "fm.hiddenSeedIds",
   plan: "fm.weeklyPlan",
   grocery: "fm.grocery",
+  migrations: "fm.migrations",
 };
+
+const SEED_IDS = new Set(SEED_MEALS.map((meal) => meal.id));
+
+function isUserCreatedMeal(id, record) {
+  return String(id || "").startsWith("user-") || record?.seed === false;
+}
+
+function shouldClearSeedNotes(id, record) {
+  if (!id || isUserCreatedMeal(id, record)) return false;
+  return SEED_IDS.has(id) || record?.seed === true;
+}
+
+export function clearImprovisedSeedNotes({ seedEdits = {}, userMeals = [] } = {}) {
+  let changed = false;
+  const nextEdits = {};
+  for (const [id, edit] of Object.entries(seedEdits || {})) {
+    if (edit && typeof edit === "object" && shouldClearSeedNotes(id, edit) && edit.notes) {
+      nextEdits[id] = { ...edit, notes: "" };
+      changed = true;
+    } else {
+      nextEdits[id] = edit;
+    }
+  }
+
+  const nextMeals = (Array.isArray(userMeals) ? userMeals : []).map((meal) => {
+    if (!meal || !shouldClearSeedNotes(meal.id, meal) || !meal.notes) return meal;
+    changed = true;
+    return { ...meal, notes: "" };
+  });
+
+  return { seedEdits: nextEdits, userMeals: nextMeals, changed };
+}
+
+function migrateClearSeedNotes() {
+  const flags = read(KEYS.migrations, {});
+  if (flags.clearSeedNotes) return;
+
+  const currentEdits = read(KEYS.seedEdits, {});
+  const currentMeals = read(KEYS.userMeals, []);
+  const { seedEdits, userMeals, changed } = clearImprovisedSeedNotes({
+    seedEdits: currentEdits,
+    userMeals: currentMeals,
+  });
+  if (changed) {
+    write(KEYS.seedEdits, seedEdits);
+    write(KEYS.userMeals, userMeals);
+  }
+  write(KEYS.migrations, { ...flags, clearSeedNotes: 1 });
+}
 
 function read(key, fallback) {
   try {
@@ -69,6 +119,7 @@ function migrateStoredIngredients() {
 
 export function loadMeals() {
   migrateStoredIngredients();
+  migrateClearSeedNotes();
   const userMeals = read(KEYS.userMeals, []);
   const seedEdits = read(KEYS.seedEdits, {});
   const hidden = new Set(read(KEYS.hidden, []));
