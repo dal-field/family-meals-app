@@ -395,29 +395,31 @@ export function createApp(root) {
     return `
       <div class="sheet-backdrop" data-close-sheet>
         <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="meal-title">
-          <p class="kicker">${meal.seed ? "Family recipe" : "Your meal"}</p>
-          <h2 id="meal-title">${escapeHtml(meal.name)}</h2>
-          <div class="badge-row">
-            ${meal.types.map((type) => `<span class="badge">${TYPE_LABEL[type]}</span>`).join("")}
-            ${meal.makeAhead ? `<span class="badge">Make-ahead</span>` : ""}
-            ${meal.hidden ? `<span class="badge">Hidden</span>` : ""}
+          <div class="sheet-body">
+            <p class="kicker">${meal.seed ? "Family recipe" : "Your meal"}</p>
+            <h2 id="meal-title">${escapeHtml(meal.name)}</h2>
+            <div class="badge-row">
+              ${meal.types.map((type) => `<span class="badge">${TYPE_LABEL[type]}</span>`).join("")}
+              ${meal.makeAhead ? `<span class="badge">Make-ahead</span>` : ""}
+              ${meal.hidden ? `<span class="badge">Hidden</span>` : ""}
+            </div>
+            ${
+              meal.notes
+                ? `<div class="detail-block"><h3>Notes</h3><p>${escapeHtml(meal.notes)}</p></div>`
+                : ""
+            }
+            ${
+              meal.ingredients
+                ? `<div class="detail-block"><h3>Ingredients</h3><p>${escapeHtml(meal.ingredients)}</p></div>`
+                : ""
+            }
+            ${
+              meal.recipeUrl
+                ? `<a class="recipe-link" href="${escapeAttr(meal.recipeUrl)}" target="_blank" rel="noopener noreferrer">Open recipe</a>`
+                : ""
+            }
           </div>
-          ${
-            meal.notes
-              ? `<div class="detail-block"><h3>Notes</h3><p>${escapeHtml(meal.notes)}</p></div>`
-              : ""
-          }
-          ${
-            meal.ingredients
-              ? `<div class="detail-block"><h3>Ingredients</h3><p>${escapeHtml(meal.ingredients)}</p></div>`
-              : ""
-          }
-          ${
-            meal.recipeUrl
-              ? `<a class="recipe-link" href="${escapeAttr(meal.recipeUrl)}" target="_blank" rel="noopener noreferrer">Open recipe</a>`
-              : ""
-          }
-          <div class="actions">
+          <div class="actions sheet-actions">
             <button class="ghost" type="button" data-edit-meal="${meal.id}">Edit</button>
             ${
               meal.seed
@@ -448,25 +450,27 @@ export function createApp(root) {
               Or type a one-off
               <input name="oneOff" value="${escapeAttr(state.oneOff)}" placeholder="Something simple for tonight" />
             </label>
-            <div class="actions">
+            <div class="actions sheet-actions">
               <button class="primary" type="submit">Use this</button>
               <button class="ghost" type="button" data-clear-slot>Clear slot</button>
               <button class="ghost" type="button" data-close-picker>Cancel</button>
             </div>
           </form>
-          <div class="meal-list" style="margin-top:16px">
-            ${meals
-              .slice(0, 40)
-              .map(
-                (meal) => `
-                  <button class="meal-row" type="button" data-pick-meal="${meal.id}">
-                    <span class="meal-main">
-                      <span class="meal-name">${escapeHtml(meal.name)}</span>
-                      <span class="meal-meta">${mealMeta(meal)}</span>
-                    </span>
-                  </button>`
-              )
-              .join("")}
+          <div class="sheet-body" style="margin-top:12px">
+            <div class="meal-list">
+              ${meals
+                .slice(0, 40)
+                .map(
+                  (meal) => `
+                    <button class="meal-row" type="button" data-pick-meal="${meal.id}">
+                      <span class="meal-main">
+                        <span class="meal-name">${escapeHtml(meal.name)}</span>
+                        <span class="meal-meta">${mealMeta(meal)}</span>
+                      </span>
+                    </button>`
+                )
+                .join("")}
+            </div>
           </div>
         </aside>
       </div>
