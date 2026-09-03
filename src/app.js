@@ -65,7 +65,6 @@ export function createApp(root) {
     picker: null,
     expandedDay: localDateKey(new Date()),
     clearConfirm: null,
-    swap: null,
     weekSlotDetail: null,
     pickerQuery: "",
     oneOff: "",
@@ -163,6 +162,11 @@ export function createApp(root) {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  function weekSlotReplaceMeals(slotId, query) {
+    const q = query.trim();
+    return filteredLibrary(query, q ? "all" : slotId);
+  }
+
   function persistMeal(meal) {
     if (SEED_MEALS.some((seed) => seed.id === meal.id)) saveSeedEdit(meal);
     else saveUserMeal(meal);
@@ -191,7 +195,6 @@ export function createApp(root) {
       ${state.selectedId ? mealSheet() : ""}
       ${state.picker ? pickerSheet() : ""}
       ${state.clearConfirm ? clearConfirmSheet() : ""}
-      ${state.swap ? swapSheet() : ""}
       ${state.weekSlotDetail ? weekSlotDetailSheet() : ""}
       ${state.storeDialog ? storeDialogSheet() : ""}
       ${state.toast ? `<div class="toast" role="status">${escapeHtml(state.toast)}</div>` : ""}
@@ -282,30 +285,16 @@ export function createApp(root) {
             ? `<div class="slots">
           ${SLOTS.map((slot) => {
             const value = slotText(plan[slot.id]);
-            const canSwap = slotHasMeal(plan[slot.id]);
             const filled = Boolean(value);
             return `
-              <div class="slot-row">
-                <button
-                  class="slot-btn ${slot.id === "dinner" ? "is-dinner" : ""} ${filled ? "" : "is-empty"}"
-                  type="button"
-                  ${filled ? `data-view-slot="${day.key}:${slot.id}"` : `data-assign-slot="${day.key}:${slot.id}"`}
-                >
-                  <span class="kind">${slot.label}</span>
-                  <span class="value">${escapeHtml(value || "Tap to add")}</span>
-                </button>
-                ${
-                  canSwap
-                    ? `<button
-                        class="slot-swap"
-                        type="button"
-                        data-swap-from="${day.key}"
-                        data-swap-slot="${slot.id}"
-                        aria-label="Swap ${day.label} ${slot.label.toLowerCase()}"
-                      >${swapIcon()}</button>`
-                    : ""
-                }
-              </div>`;
+              <button
+                class="slot-btn ${slot.id === "dinner" ? "is-dinner" : ""} ${filled ? "" : "is-empty"}"
+                type="button"
+                ${filled ? `data-view-slot="${day.key}:${slot.id}"` : `data-assign-slot="${day.key}:${slot.id}"`}
+              >
+                <span class="kind">${slot.label}</span>
+                <span class="value">${escapeHtml(value || "Tap to add")}</span>
+              </button>`;
           }).join("")}
           ${
             canClear
@@ -585,11 +574,112 @@ export function createApp(root) {
   }
 
   function weekSlotDetailSheet() {
-    const context = resolveWeekSlotDetail(state.weekSlotDetail);
-    if (!context) return "";
+    const detail = state.weekSlotDetail;
+    const context = resolveWeekSlotDetail(detail);
+    if (!context || !detail) return "";
     const { day, slotMeta, meal, oneOffName } = context;
+    const slot = detail.slot;
+    const panel = detail.panel || null;
     const title = meal ? meal.name : oneOffName;
     const ingredients = meal ? normalizeIngredients(meal.ingredients) : [];
+
+    if (panel === "clearConfirm") {
+      return `
+        <div class="sheet-backdrop" data-close-week-slot>
+          <aside class="sheet sheet-confirm" role="dialog" aria-modal="true" aria-labelledby="week-clear-title">
+            <div class="sheet-body">
+              <p class="kicker">${escapeHtml(day.title)} · ${escapeHtml(slotMeta.label)}</p>
+              <h2 id="week-clear-title">Clear ${escapeHtml(slotMeta.label.toLowerCase())}?</h2>
+              <p class="hint">This removes only this slot. Other meals on ${escapeHtml(day.title)} stay as they are.</p>
+            </div>
+            <div class="actions sheet-actions">
+              <button class="danger" type="button" data-confirm-week-slot-clear>Clear slot</button>
+              <button class="ghost" type="button" data-week-slot-back>Cancel</button>
+            </div>
+          </aside>
+        </div>
+      `;
+    }
+
+    if (panel === "swap") {
+      const others = weekDays().filter((item) => item.key !== day.key);
+      return `
+        <div class="sheet-backdrop" data-close-week-slot>
+          <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="week-swap-title">
+            <div class="sheet-body">
+              <button class="text-btn week-slot-back" type="button" data-week-slot-back>← Back to details</button>
+              <p class="kicker">${escapeHtml(day.title)} · ${escapeHtml(slotMeta.label)}</p>
+              <h2 id="week-swap-title">Switch with another day</h2>
+              <p class="hint">Same meal type only. An empty day is fine — meals swap between the two days.</p>
+              <div class="meal-list">
+                ${others
+                  .map((other) => {
+                    const text = slotText(resolveDayPlan(state.plan, other)[slot]) || "empty";
+                    return `
+                      <button class="meal-row" type="button" data-week-slot-swap-target="${other.key}">
+                        <span class="meal-main">
+                          <span class="meal-name">${escapeHtml(other.title)}</span>
+                          <span class="meal-meta">${escapeHtml(text)}</span>
+                        </span>
+                      </button>`;
+                  })
+                  .join("")}
+              </div>
+            </div>
+            <div class="actions sheet-actions">
+              <button class="ghost" type="button" data-week-slot-back>Cancel</button>
+            </div>
+          </aside>
+        </div>
+      `;
+    }
+
+    if (panel === "replace") {
+      const meals = weekSlotReplaceMeals(slot, detail.replaceQuery || "");
+      return `
+        <div class="sheet-backdrop" data-close-week-slot>
+          <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="week-replace-title">
+            <button class="text-btn week-slot-back" type="button" data-week-slot-back>← Back to details</button>
+            <p class="kicker">${escapeHtml(day.title)} · ${escapeHtml(slotMeta.label)}</p>
+            <h2 id="week-replace-title">Replace meal</h2>
+            <p class="hint">Now: ${escapeHtml(title)}</p>
+            <input
+              class="search"
+              type="search"
+              placeholder="Search the library"
+              value="${escapeAttr(detail.replaceQuery || "")}"
+              data-week-slot-replace-search
+            />
+            <form class="form" data-week-slot-one-off>
+              <label>
+                Or type a one-off
+                <input name="oneOff" value="${escapeAttr(detail.oneOff || "")}" placeholder="Something simple for tonight" />
+              </label>
+            </form>
+            <div class="sheet-body">
+              <div class="meal-list">
+                ${meals
+                  .slice(0, 40)
+                  .map(
+                    (item) => `
+                      <button class="meal-row" type="button" data-week-slot-pick-meal="${item.id}">
+                        <span class="meal-main">
+                          <span class="meal-name">${escapeHtml(item.name)}</span>
+                          <span class="meal-meta">${mealMeta(item)}</span>
+                        </span>
+                      </button>`
+                  )
+                  .join("")}
+              </div>
+            </div>
+            <div class="actions sheet-actions">
+              <button class="primary" type="button" data-week-slot-submit-one-off>Use this</button>
+              <button class="ghost" type="button" data-week-slot-back>Cancel</button>
+            </div>
+          </aside>
+        </div>
+      `;
+    }
 
     return `
       <div class="sheet-backdrop" data-close-week-slot>
@@ -603,13 +693,34 @@ export function createApp(root) {
                 : `<div class="badge-row"><span class="badge">One-off plan</span></div>`
             }
           </div>
+          <div class="week-slot-actions" aria-label="Meal slot actions">
+            <button class="week-slot-action" type="button" data-week-slot-panel="swap" aria-label="Switch with another day">
+              ${swapIcon()}
+              <span>Switch</span>
+            </button>
+            <button class="week-slot-action" type="button" data-week-slot-panel="replace" aria-label="Replace meal">
+              <span class="week-slot-action-icon" aria-hidden="true">↺</span>
+              <span>Replace</span>
+            </button>
+            ${
+              meal
+                ? `<button class="week-slot-action" type="button" data-edit-from-week-slot="${meal.id}" aria-label="Edit meal">
+                    <span class="week-slot-action-icon" aria-hidden="true">✎</span>
+                    <span>Edit</span>
+                  </button>`
+                : ""
+            }
+            <button class="week-slot-action" type="button" data-week-slot-panel="clearConfirm" aria-label="Clear slot">
+              <span class="week-slot-action-icon" aria-hidden="true">×</span>
+              <span>Clear</span>
+            </button>
+          </div>
           <div class="actions sheet-actions">
             ${
               meal && ingredients.length
                 ? `<button class="primary" type="button" data-send-grocery="${meal.id}">Add to groceries</button>`
                 : ""
             }
-            <button class="ghost" type="button" data-change-week-slot>Change this meal</button>
             <button class="ghost" type="button" data-close-week-slot>Close</button>
           </div>
         </aside>
@@ -650,45 +761,10 @@ export function createApp(root) {
 
   function swapIcon() {
     return `
-      <svg viewBox="0 0 24 24" aria-hidden="true">
+      <svg class="week-slot-action-icon" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 7h13l-3.2-3.2" />
         <path d="M20 17H7l3.2 3.2" />
       </svg>`;
-  }
-
-  function swapSheet() {
-    const { day, slot } = state.swap;
-    if (!day || !slot) return "";
-    const slotMeta = SLOTS.find((item) => item.id === slot);
-    const others = weekDays().filter((item) => item.key !== day.key);
-    return `
-      <div class="sheet-backdrop" data-close-swap>
-        <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="swap-title">
-          <div class="sheet-body">
-            <p class="kicker">${escapeHtml(day.title)}</p>
-            <h2 id="swap-title">Swap ${escapeHtml(day.label)} ${escapeHtml(slotMeta.label.toLowerCase())} with…</h2>
-            <p class="hint">Same meal type only. An empty day is fine — the meal will move there.</p>
-            <div class="meal-list">
-              ${others
-                .map((other) => {
-                  const text = slotText(resolveDayPlan(state.plan, other)[slot]) || "empty";
-                  return `
-                    <button class="meal-row" type="button" data-swap-target="${other.key}">
-                      <span class="meal-main">
-                        <span class="meal-name">${escapeHtml(other.title)}</span>
-                        <span class="meal-meta">${escapeHtml(text)}</span>
-                      </span>
-                    </button>`;
-                })
-                .join("")}
-            </div>
-          </div>
-          <div class="actions sheet-actions">
-            <button class="ghost" type="button" data-close-swap>Cancel</button>
-          </div>
-        </aside>
-      </div>
-    `;
   }
 
   function clearConfirmSheet() {
@@ -777,7 +853,13 @@ export function createApp(root) {
       button.addEventListener("click", () => {
         const context = parseWeekSlotRef(button.dataset.viewSlot);
         if (!context) return;
-        state.weekSlotDetail = context;
+        state.weekSlotDetail = {
+          day: context.day,
+          slot: context.slot,
+          panel: null,
+          replaceQuery: "",
+          oneOff: "",
+        };
         render();
       });
     });
@@ -796,12 +878,131 @@ export function createApp(root) {
       });
     });
 
-    const changeWeekSlot = root.querySelector("[data-change-week-slot]");
-    if (changeWeekSlot) {
-      changeWeekSlot.addEventListener("click", () => {
-        openWeekSlotPicker(state.weekSlotDetail);
+    root.querySelectorAll("[data-week-slot-panel]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (!state.weekSlotDetail) return;
+        state.weekSlotDetail = {
+          ...state.weekSlotDetail,
+          panel: button.dataset.weekSlotPanel,
+        };
+        render();
+      });
+    });
+
+    root.querySelectorAll("[data-week-slot-back]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (!state.weekSlotDetail) return;
+        state.weekSlotDetail = {
+          ...state.weekSlotDetail,
+          panel: null,
+          replaceQuery: "",
+          oneOff: "",
+        };
+        render();
+      });
+    });
+
+    root.querySelectorAll("[data-week-slot-swap-target]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (!state.weekSlotDetail) return;
+        const target = weekDays().find((item) => item.key === button.dataset.weekSlotSwapTarget);
+        if (!target || target.key === state.weekSlotDetail.day.key) return;
+        swapDaySlots(state.plan, state.weekSlotDetail.day, target, state.weekSlotDetail.slot);
+        savePlan(state.plan);
+        const slotMeta = SLOTS.find((item) => item.id === state.weekSlotDetail.slot);
+        toast(`Swapped ${slotMeta.label.toLowerCase()}`);
+        state.weekSlotDetail = null;
+        render();
+      });
+    });
+
+    const weekSlotReplaceSearch = root.querySelector("[data-week-slot-replace-search]");
+    if (weekSlotReplaceSearch) {
+      weekSlotReplaceSearch.addEventListener("input", () => {
+        if (!state.weekSlotDetail) return;
+        state.weekSlotDetail = {
+          ...state.weekSlotDetail,
+          replaceQuery: weekSlotReplaceSearch.value,
+        };
+        render();
+        const next = root.querySelector("[data-week-slot-replace-search]");
+        if (next) {
+          next.focus();
+          next.setSelectionRange(state.weekSlotDetail.replaceQuery.length, state.weekSlotDetail.replaceQuery.length);
+        }
       });
     }
+
+    root.querySelectorAll("[data-week-slot-pick-meal]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const meal = mealById(button.dataset.weekSlotPickMeal);
+        if (!meal || !state.weekSlotDetail) return;
+        ensureDayPlan(state.plan, state.weekSlotDetail.day)[state.weekSlotDetail.slot] = {
+          mealId: meal.id,
+          label: meal.name,
+        };
+        savePlan(state.plan);
+        state.weekSlotDetail = null;
+        toast("Weekly plan updated");
+        render();
+      });
+    });
+
+    const weekSlotSubmitOneOff = root.querySelector("[data-week-slot-submit-one-off]");
+    if (weekSlotSubmitOneOff) {
+      weekSlotSubmitOneOff.addEventListener("click", () => {
+        root.querySelector("[data-week-slot-one-off]")?.requestSubmit();
+      });
+    }
+
+    const weekSlotOneOff = root.querySelector("[data-week-slot-one-off]");
+    if (weekSlotOneOff) {
+      const oneOffInput = weekSlotOneOff.querySelector('[name="oneOff"]');
+      if (oneOffInput) {
+        oneOffInput.addEventListener("input", () => {
+          if (!state.weekSlotDetail) return;
+          state.weekSlotDetail = { ...state.weekSlotDetail, oneOff: oneOffInput.value };
+        });
+      }
+      weekSlotOneOff.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const value = String(new FormData(weekSlotOneOff).get("oneOff") || "").trim();
+        if (!value || !state.weekSlotDetail) return;
+        ensureDayPlan(state.plan, state.weekSlotDetail.day)[state.weekSlotDetail.slot] = {
+          mealId: null,
+          label: value,
+        };
+        savePlan(state.plan);
+        state.weekSlotDetail = null;
+        toast("Weekly plan updated");
+        render();
+      });
+    }
+
+    const confirmWeekSlotClear = root.querySelector("[data-confirm-week-slot-clear]");
+    if (confirmWeekSlotClear) {
+      confirmWeekSlotClear.addEventListener("click", () => {
+        if (!state.weekSlotDetail) return;
+        ensureDayPlan(state.plan, state.weekSlotDetail.day)[state.weekSlotDetail.slot] = {
+          mealId: null,
+          label: "",
+        };
+        savePlan(state.plan);
+        state.weekSlotDetail = null;
+        toast("Slot cleared");
+        render();
+      });
+    }
+
+    root.querySelectorAll("[data-edit-from-week-slot]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const meal = mealById(button.dataset.editFromWeekSlot);
+        if (!meal) return;
+        state.weekSlotDetail = null;
+        fillForm(meal);
+        go(`add/${meal.id}`);
+      });
+    });
 
     root.querySelectorAll("[data-clear-day]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -832,40 +1033,6 @@ export function createApp(root) {
         render();
       });
     }
-
-    root.querySelectorAll("[data-swap-from]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const day = weekDays().find((item) => item.key === button.dataset.swapFrom);
-        const slot = button.dataset.swapSlot;
-        if (!day || !slot) return;
-        const current = resolveDayPlan(state.plan, day)[slot];
-        if (!slotHasMeal(current)) return;
-        state.swap = { day, slot };
-        render();
-      });
-    });
-
-    root.querySelectorAll("[data-close-swap]").forEach((node) => {
-      node.addEventListener("click", (event) => {
-        if (node.classList.contains("sheet-backdrop") && event.target !== node) return;
-        state.swap = null;
-        render();
-      });
-    });
-
-    root.querySelectorAll("[data-swap-target]").forEach((button) => {
-      button.addEventListener("click", () => {
-        if (!state.swap) return;
-        const target = weekDays().find((item) => item.key === button.dataset.swapTarget);
-        if (!target || target.key === state.swap.day.key) return;
-        swapDaySlots(state.plan, state.swap.day, target, state.swap.slot);
-        savePlan(state.plan);
-        const slotMeta = SLOTS.find((item) => item.id === state.swap.slot);
-        toast(`Swapped ${slotMeta.label.toLowerCase()}`);
-        state.swap = null;
-        render();
-      });
-    });
 
     root.querySelectorAll("[data-open-meal]").forEach((button) => {
       button.addEventListener("click", () => go(`meals/${button.dataset.openMeal}`));

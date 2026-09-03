@@ -252,13 +252,6 @@ h2 {
   gap: 8px;
 }
 
-.slot-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 6px;
-}
-
 .slot-btn {
   width: 100%;
   min-width: 0;
@@ -278,26 +271,42 @@ h2 {
   font-weight: 600;
 }
 
-.slot-swap {
-  width: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
+.week-slot-actions {
   display: grid;
-  place-items: center;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: 8px;
+  padding-top: 10px;
 }
 
-.slot-swap svg {
+.week-slot-action {
+  min-height: var(--tap);
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  align-content: center;
+  padding: 8px 4px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fffdf8;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.week-slot-action-icon {
   width: 22px;
   height: 22px;
+  font-size: 1.15rem;
+  line-height: 1;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.week-slot-back {
+  margin-bottom: 8px;
 }
 
 .slot-btn .kind {
