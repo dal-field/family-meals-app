@@ -1,4 +1,4 @@
-import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, daysStartingToday, emptySlot, normalizeIngredients, rollingDays } from "../src/data.js";
+import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, emptySlot, normalizeIngredients, rollingDays } from "../src/data.js";
 import { clearDayPlan, dayHasMeals, freshPlan, migrateLegacyGrocery, migratePlanToV4, resolveDayPlan, setPlanSlot, slotHasMeal, swapDaySlots } from "../src/storage.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
@@ -110,19 +110,22 @@ if (new Set(SEED_MEALS.map((meal) => meal.id)).size !== SEED_MEALS.length) {
 }
 
 const thursday = new Date("2026-09-03T12:00:00");
-const rotated = daysStartingToday(thursday).map((day) => day.id);
-if (rotated.join(",") !== "thursday,friday,saturday,sunday,monday,tuesday,wednesday") {
-  console.error("Week rotation mismatch", rotated);
-  process.exit(1);
-}
-
 const rolling = rollingDays(thursday);
-if (rolling.map((day) => day.title).join("|") !== "Thursday (9/3)|Friday (9/4)|Saturday (9/5)|Sunday (9/6)|Monday (9/7)|Tuesday (9/8)|Wednesday (9/9)") {
-  console.error("Rolling titles mismatch", rolling.map((day) => day.title));
+const dayByWeekday = (days, id) => days.find((day) => day.weekdayId === id);
+if (rolling.map((day) => day.compact).join(",") !== "M,Tu,W,Th,F,Sa,Su") {
+  console.error("Week must be Monday–Sunday top to bottom", rolling.map((day) => day.compact));
   process.exit(1);
 }
-if (rolling.filter((day) => day.seedable).map((day) => day.key).join(",") !== "2026-09-03,2026-09-04,2026-09-05,2026-09-06") {
-  console.error("Seedable dates mismatch", rolling);
+if (rolling.map((day) => day.title).join("|") !== "Monday (8/31)|Tuesday (9/1)|Wednesday (9/2)|Thursday (9/3)|Friday (9/4)|Saturday (9/5)|Sunday (9/6)") {
+  console.error("Calendar-week titles mismatch", rolling.map((day) => day.title));
+  process.exit(1);
+}
+if (rolling.filter((day) => day.seedable).map((day) => day.key).join(",") !== "2026-08-31,2026-09-01,2026-09-02,2026-09-03,2026-09-04,2026-09-05,2026-09-06") {
+  console.error("Current Mon–Sun week should be seedable", rolling);
+  process.exit(1);
+}
+if (!dayByWeekday(rolling, "thursday").isToday || dayByWeekday(rolling, "monday").isToday) {
+  console.error("Today highlight must stay on Thursday, not the first row");
   process.exit(1);
 }
 
@@ -131,8 +134,15 @@ if (DAYS.map((day) => day.compact).join(",") !== "M,Tu,W,Th,F,Sa,Su") {
   process.exit(1);
 }
 
+const thisThursday = dayByWeekday(rolling, "thursday");
+const thisFriday = dayByWeekday(rolling, "friday");
+const thisMonday = dayByWeekday(rolling, "monday");
+const nextWeek = rollingDays(new Date("2026-09-10T12:00:00"));
+const nextWeekMonday = dayByWeekday(nextWeek, "monday");
+const nextWeekThursday = dayByWeekday(nextWeek, "thursday");
+
 const plan = freshPlan(thursday);
-const thursdayPlan = resolveDayPlan(plan, rolling[0]);
+const thursdayPlan = resolveDayPlan(plan, thisThursday);
 if (thursdayPlan.dinner.mealId !== "ck-green-bean-casserole") {
   console.error("Current-week Thursday should use seed dinner");
   process.exit(1);
@@ -142,7 +152,17 @@ if (thursdayPlan.breakfast.mealId !== "protein-pancakes") {
   process.exit(1);
 }
 
-const nextMonday = resolveDayPlan(plan, rolling[4]);
+const thisMondayPlan = resolveDayPlan(plan, thisMonday);
+if (thisMondayPlan.breakfast.mealId !== "boiled-eggs-toast") {
+  console.error("This Monday should keep recurring breakfast", thisMondayPlan.breakfast);
+  process.exit(1);
+}
+if (thisMondayPlan.dinner.mealId !== "spaghetti") {
+  console.error("This Monday dinner should stay on this calendar week", thisMondayPlan.dinner);
+  process.exit(1);
+}
+
+const nextMonday = resolveDayPlan(plan, nextWeekMonday);
 if (nextMonday.breakfast.mealId !== "boiled-eggs-toast") {
   console.error("Next Monday should keep recurring breakfast", nextMonday.breakfast);
   process.exit(1);
@@ -152,7 +172,6 @@ if (slotHasMeal(nextMonday.dinner)) {
   process.exit(1);
 }
 
-const nextWeekThursday = rollingDays(new Date("2026-09-10T12:00:00"))[0];
 const rolledThursday = resolveDayPlan(plan, nextWeekThursday);
 if (rolledThursday.breakfast.mealId !== "protein-pancakes" || rolledThursday.lunch.mealId !== "turkey-cheese-roll-up") {
   console.error("Next week Thursday should keep recurring breakfast/lunch", rolledThursday);
@@ -163,22 +182,22 @@ if (slotHasMeal(rolledThursday.dinner)) {
   process.exit(1);
 }
 
-if (!dayHasMeals(plan, rolling[0])) {
+if (!dayHasMeals(plan, thisThursday)) {
   console.error("Seeded Thursday should report meals");
   process.exit(1);
 }
-if (!dayHasMeals(plan, rolling[4])) {
+if (!dayHasMeals(plan, nextWeekMonday)) {
   console.error("Next Monday should still report recurring meals");
   process.exit(1);
 }
 
 const writable = freshPlan(thursday);
-clearDayPlan(writable, rolling[0]);
-if (dayHasMeals(writable, rolling[0])) {
+clearDayPlan(writable, thisThursday);
+if (dayHasMeals(writable, thisThursday)) {
   console.error("Cleared Thursday should not still report meals");
   process.exit(1);
 }
-const clearedThursday = resolveDayPlan(writable, rolling[0]);
+const clearedThursday = resolveDayPlan(writable, thisThursday);
 if (clearedThursday.breakfast.mealId || clearedThursday.dinner.label) {
   console.error("Cleared Thursday should stay empty and not re-seed", clearedThursday);
   process.exit(1);
@@ -202,8 +221,8 @@ if (slotHasMeal(nextClearedThursday.breakfast) || slotHasMeal(nextClearedThursda
 }
 
 const edited = freshPlan(thursday);
-setPlanSlot(edited, rolling[0], "breakfast", emptySlot());
-if (slotHasMeal(resolveDayPlan(edited, rolling[0]).breakfast) || slotHasMeal(resolveDayPlan(edited, nextWeekThursday).breakfast)) {
+setPlanSlot(edited, thisThursday, "breakfast", emptySlot());
+if (slotHasMeal(resolveDayPlan(edited, thisThursday).breakfast) || slotHasMeal(resolveDayPlan(edited, nextWeekThursday).breakfast)) {
   console.error("User-cleared Thursday breakfast must not re-seed next week");
   process.exit(1);
 }
@@ -223,9 +242,9 @@ if (normalizeIngredients(null).length) {
 }
 
 const swapped = freshPlan(thursday);
-swapDaySlots(swapped, rolling[0], rolling[1], "dinner");
-const thuAfterSwap = resolveDayPlan(swapped, rolling[0]);
-const friAfterSwap = resolveDayPlan(swapped, rolling[1]);
+swapDaySlots(swapped, thisThursday, thisFriday, "dinner");
+const thuAfterSwap = resolveDayPlan(swapped, thisThursday);
+const friAfterSwap = resolveDayPlan(swapped, thisFriday);
 if (thuAfterSwap.dinner.mealId !== "beef-stroganoff" || friAfterSwap.dinner.mealId !== "ck-green-bean-casserole") {
   console.error("Thursday and Friday dinners should swap", thuAfterSwap.dinner, friAfterSwap.dinner);
   process.exit(1);
@@ -236,9 +255,9 @@ if (thuAfterSwap.breakfast.mealId !== "protein-pancakes" || friAfterSwap.breakfa
 }
 
 const moved = freshPlan(thursday);
-swapDaySlots(moved, rolling[0], rolling[4], "lunch");
-const thuAfterMove = resolveDayPlan(moved, rolling[0]);
-const monAfterMove = resolveDayPlan(moved, rolling[4]);
+swapDaySlots(moved, thisThursday, thisMonday, "lunch");
+const thuAfterMove = resolveDayPlan(moved, thisThursday);
+const monAfterMove = resolveDayPlan(moved, thisMonday);
 if (thuAfterMove.lunch.mealId !== "ham-sandwich") {
   console.error("Lunch swap should exchange weekday templates", thuAfterMove.lunch);
   process.exit(1);
