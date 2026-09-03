@@ -5,6 +5,7 @@ import {
   STORE_PRESETS,
   TYPE_ORDER,
   localDateKey,
+  normalizeIngredients,
   rollingDays,
   slugify,
   storeColor,
@@ -46,7 +47,7 @@ function emptyForm() {
     types: [],
     notes: "",
     recipeUrl: "",
-    ingredients: "",
+    ingredients: [],
     makeAhead: false,
   };
 }
@@ -68,6 +69,7 @@ export function createApp(root) {
     oneOff: "",
     editingId: null,
     form: emptyForm(),
+    ingredientDraft: "",
     groceryDraft: "",
     groceryStore: "",
     groceryStoreOther: "",
@@ -120,6 +122,7 @@ export function createApp(root) {
       if (meal) fillForm(meal);
     } else if (state.tab === "add" && !extra && !state.editingId) {
       state.form = emptyForm();
+      state.ingredientDraft = "";
     }
   }
 
@@ -139,9 +142,10 @@ export function createApp(root) {
       types: [...meal.types],
       notes: meal.notes || "",
       recipeUrl: meal.recipeUrl || "",
-      ingredients: meal.ingredients || "",
+      ingredients: normalizeIngredients(meal.ingredients),
       makeAhead: Boolean(meal.makeAhead),
     };
+    state.ingredientDraft = "";
   }
 
   function filteredLibrary(query, type) {
@@ -151,7 +155,7 @@ export function createApp(root) {
         if (type === "makeAhead") return meal.makeAhead;
         if (type !== "all" && !meal.types.includes(type)) return false;
         if (!q) return true;
-        const blob = [meal.name, meal.notes, meal.ingredients, meal.recipeUrl].join(" ").toLowerCase();
+        const blob = [meal.name, meal.notes, meal.ingredients.join(" "), meal.recipeUrl].join(" ").toLowerCase();
         return blob.includes(q);
       })
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -492,10 +496,34 @@ export function createApp(root) {
           Recipe URL
           <input name="recipeUrl" type="text" inputmode="url" autocomplete="off" placeholder="https://" value="${escapeAttr(form.recipeUrl)}" />
         </label>
-        <label>
-          Ingredients
-          <textarea name="ingredients" placeholder="One per line is fine">${escapeHtml(form.ingredients)}</textarea>
-        </label>
+        <div>
+          <div class="hint" style="margin-bottom:8px">Ingredients</div>
+          <div class="ingredient-add">
+            <input
+              type="text"
+              data-ingredient-draft
+              placeholder="e.g. Tortillas"
+              value="${escapeAttr(state.ingredientDraft)}"
+              autocomplete="off"
+            />
+            <button class="primary" type="button" data-add-ingredient>Add</button>
+          </div>
+          ${
+            form.ingredients.length
+              ? `<ul class="ingredient-list">
+                  ${form.ingredients
+                    .map(
+                      (item, index) => `
+                        <li class="ingredient-row">
+                          <span>${escapeHtml(item)}</span>
+                          <button class="ghost" type="button" data-remove-ingredient="${index}" aria-label="Remove ${escapeAttr(item)}">✕</button>
+                        </li>`
+                    )
+                    .join("")}
+                </ul>`
+              : `<p class="hint">Add one item at a time. Each stays its own row.</p>`
+          }
+        </div>
         <label class="check-row">
           <input type="checkbox" name="makeAhead" ${form.makeAhead ? "checked" : ""} />
           Make-ahead
@@ -515,6 +543,7 @@ export function createApp(root) {
   function mealSheet() {
     const meal = mealById(state.selectedId);
     if (!meal) return "";
+    const ingredients = normalizeIngredients(meal.ingredients);
     return `
       <div class="sheet-backdrop" data-close-sheet>
         <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="meal-title">
@@ -532,8 +561,13 @@ export function createApp(root) {
                 : ""
             }
             ${
-              meal.ingredients
-                ? `<div class="detail-block"><h3>Ingredients</h3><p>${escapeHtml(meal.ingredients)}</p></div>`
+              ingredients.length
+                ? `<div class="detail-block">
+                    <h3>Ingredients</h3>
+                    <ul class="ingredient-bullets">
+                      ${ingredients.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+                    </ul>
+                  </div>`
                 : ""
             }
             ${
@@ -543,6 +577,11 @@ export function createApp(root) {
             }
           </div>
           <div class="actions sheet-actions">
+            ${
+              ingredients.length
+                ? `<button class="primary" type="button" data-send-grocery="${meal.id}">Add to groceries</button>`
+                : ""
+            }
             <button class="ghost" type="button" data-edit-meal="${meal.id}">Edit</button>
             ${
               meal.seed
@@ -625,6 +664,7 @@ export function createApp(root) {
       button.addEventListener("click", () => {
         state.editingId = null;
         state.form = emptyForm();
+        state.ingredientDraft = "";
         go(button.dataset.tab);
       });
     });
@@ -781,24 +821,54 @@ export function createApp(root) {
     if (form) {
       form.addEventListener("submit", (event) => {
         event.preventDefault();
-        const data = new FormData(form);
-        const name = String(data.get("name") || "").trim();
+        readMealForm(form);
+        const name = state.form.name.trim();
         if (!name) return;
-        const types = [...form.querySelectorAll('input[name="types"]:checked')].map((input) => input.value);
+        const types = state.form.types;
         const meal = {
           id: state.editingId || uniqueId(name),
           name,
           types: types.length ? types : ["dinner"],
-          notes: String(data.get("notes") || "").trim(),
-          recipeUrl: String(data.get("recipeUrl") || "").trim(),
-          ingredients: String(data.get("ingredients") || "").trim(),
-          makeAhead: form.querySelector('[name="makeAhead"]').checked,
+          notes: state.form.notes.trim(),
+          recipeUrl: state.form.recipeUrl.trim(),
+          ingredients: normalizeIngredients(state.form.ingredients),
+          makeAhead: state.form.makeAhead,
         };
         persistMeal(meal);
         state.editingId = null;
         state.form = emptyForm();
+        state.ingredientDraft = "";
         toast("Saved on this phone");
         go(`meals/${meal.id}`);
+      });
+
+      const draft = form.querySelector("[data-ingredient-draft]");
+      if (draft) {
+        draft.addEventListener("input", () => {
+          state.ingredientDraft = draft.value;
+        });
+        draft.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            addIngredientRow(form);
+          }
+        });
+      }
+
+      const addIngredient = form.querySelector("[data-add-ingredient]");
+      if (addIngredient) {
+        addIngredient.addEventListener("click", () => addIngredientRow(form));
+      }
+
+      form.querySelectorAll("[data-remove-ingredient]").forEach((button) => {
+        button.addEventListener("click", () => {
+          readMealForm(form);
+          const index = Number(button.dataset.removeIngredient);
+          if (Number.isNaN(index)) return;
+          state.form.ingredients = state.form.ingredients.filter((_, itemIndex) => itemIndex !== index);
+          render();
+          formFocus("[data-ingredient-draft]");
+        });
       });
     }
 
@@ -807,6 +877,7 @@ export function createApp(root) {
       cancel.addEventListener("click", () => {
         state.editingId = null;
         state.form = emptyForm();
+        state.ingredientDraft = "";
         go("add");
       });
     }
@@ -816,6 +887,16 @@ export function createApp(root) {
         if (node.classList.contains("sheet-backdrop") && event.target !== node) return;
         state.selectedId = null;
         go("meals");
+      });
+    });
+
+    root.querySelectorAll("[data-send-grocery]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const meal = mealById(button.dataset.sendGrocery);
+        if (!meal) return;
+        const added = addMealIngredientsToGrocery(meal);
+        if (added) toast(`Added ${added} item${added === 1 ? "" : "s"} to Groceries`);
+        else toast("Those ingredients are already on Groceries");
       });
     });
 
@@ -921,6 +1002,50 @@ export function createApp(root) {
         render();
       });
     }
+  }
+
+  function readMealForm(form) {
+    const data = new FormData(form);
+    state.form.name = String(data.get("name") || "");
+    state.form.notes = String(data.get("notes") || "");
+    state.form.recipeUrl = String(data.get("recipeUrl") || "");
+    state.form.types = [...form.querySelectorAll('input[name="types"]:checked')].map((input) => input.value);
+    state.form.makeAhead = Boolean(form.querySelector('[name="makeAhead"]')?.checked);
+  }
+
+  function addIngredientRow(form) {
+    readMealForm(form);
+    const item = state.ingredientDraft.trim();
+    if (!item) return;
+    const exists = state.form.ingredients.some((row) => row.toLowerCase() === item.toLowerCase());
+    if (!exists) state.form.ingredients.push(item);
+    state.ingredientDraft = "";
+    render();
+    formFocus("[data-ingredient-draft]");
+  }
+
+  function formFocus(selector) {
+    const next = root.querySelector(selector);
+    if (next) next.focus();
+  }
+
+  function addMealIngredientsToGrocery(meal) {
+    const existing = new Set(state.grocery.items.map((item) => item.name.trim().toLowerCase()));
+    let added = 0;
+    for (const name of normalizeIngredients(meal.ingredients)) {
+      const key = name.toLowerCase();
+      if (existing.has(key)) continue;
+      state.grocery.items.push({
+        id: `g-${Date.now()}-${added}`,
+        name,
+        checked: false,
+        store: "",
+      });
+      existing.add(key);
+      added += 1;
+    }
+    if (added) saveGrocery(state.grocery);
+    return added;
   }
 
   function addGroceryItem() {

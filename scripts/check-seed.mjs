@@ -1,4 +1,4 @@
-import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, daysStartingToday, rollingDays } from "../src/data.js";
+import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, daysStartingToday, normalizeIngredients, rollingDays } from "../src/data.js";
 import { clearDayPlan, dayHasMeals, resolveDayPlan } from "../src/storage.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
@@ -169,6 +169,20 @@ if (writable.dates["2026-09-04"] || writable.dates["2026-09-07"]) {
 const fridayAfterClear = resolveDayPlan(writable, rolling[1]);
 if (fridayAfterClear.dinner.mealId !== "beef-stroganoff") {
   console.error("Friday should still use seed dinner after Thursday clear");
+  process.exit(1);
+}
+
+const splitLines = normalizeIngredients("Tortillas\nCheese\n\nSalsa");
+if (splitLines.join("|") !== "Tortillas|Cheese|Salsa") {
+  console.error("Newline ingredients should become separate items", splitLines);
+  process.exit(1);
+}
+if (normalizeIngredients([" Milk ", "", "Eggs"]).join("|") !== "Milk|Eggs") {
+  console.error("Array ingredients should trim empties");
+  process.exit(1);
+}
+if (normalizeIngredients(null).length) {
+  console.error("Missing ingredients should be an empty list");
   process.exit(1);
 }
 

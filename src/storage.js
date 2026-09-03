@@ -1,4 +1,4 @@
-import { DAYS, SEED_MEALS, SEED_PLAN, SLOTS, emptySlots, rollingDays } from "./data.js";
+import { DAYS, SEED_MEALS, SEED_PLAN, SLOTS, emptySlots, normalizeIngredients, rollingDays } from "./data.js";
 
 const KEYS = {
   userMeals: "fm.userMeals",
@@ -26,7 +26,35 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function migrateStoredIngredients() {
+  const meals = read(KEYS.userMeals, []);
+  if (Array.isArray(meals) && meals.some((meal) => meal && typeof meal.ingredients === "string")) {
+    write(
+      KEYS.userMeals,
+      meals.map((meal) =>
+        meal && typeof meal.ingredients === "string"
+          ? { ...meal, ingredients: normalizeIngredients(meal.ingredients) }
+          : meal
+      )
+    );
+  }
+
+  const edits = read(KEYS.seedEdits, {});
+  if (edits && typeof edits === "object") {
+    let changed = false;
+    const next = { ...edits };
+    for (const [id, edit] of Object.entries(edits)) {
+      if (edit && typeof edit.ingredients === "string") {
+        next[id] = { ...edit, ingredients: normalizeIngredients(edit.ingredients) };
+        changed = true;
+      }
+    }
+    if (changed) write(KEYS.seedEdits, next);
+  }
+}
+
 export function loadMeals() {
+  migrateStoredIngredients();
   const userMeals = read(KEYS.userMeals, []);
   const seedEdits = read(KEYS.seedEdits, {});
   const hidden = new Set(read(KEYS.hidden, []));
@@ -39,12 +67,18 @@ export function loadMeals() {
       id: meal.id,
       seed: true,
       hidden: hidden.has(meal.id),
+      ingredients: normalizeIngredients(edit.ingredients ?? meal.ingredients),
     };
   });
 
   const extras = userMeals
     .filter((meal) => meal && meal.id && !SEED_MEALS.some((seed) => seed.id === meal.id))
-    .map((meal) => ({ ...meal, seed: false, hidden: Boolean(meal.hidden) }));
+    .map((meal) => ({
+      ...meal,
+      seed: false,
+      hidden: Boolean(meal.hidden),
+      ingredients: normalizeIngredients(meal.ingredients),
+    }));
 
   return [...seeds, ...extras];
 }
@@ -58,7 +92,7 @@ export function saveUserMeal(meal) {
     types: meal.types,
     notes: meal.notes || "",
     recipeUrl: meal.recipeUrl || "",
-    ingredients: meal.ingredients || "",
+    ingredients: normalizeIngredients(meal.ingredients),
     makeAhead: Boolean(meal.makeAhead),
     seed: false,
   };
@@ -74,7 +108,7 @@ export function saveSeedEdit(meal) {
     types: meal.types,
     notes: meal.notes || "",
     recipeUrl: meal.recipeUrl || "",
-    ingredients: meal.ingredients || "",
+    ingredients: normalizeIngredients(meal.ingredients),
     makeAhead: Boolean(meal.makeAhead),
   };
   write(KEYS.seedEdits, edits);

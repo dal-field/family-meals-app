@@ -22,11 +22,24 @@ export const TYPE_ORDER = ["breakfast", "lunch", "dinner", "snack"];
 const meal = (partial) => ({
   notes: "",
   recipeUrl: "",
-  ingredients: "",
+  ingredients: [],
   makeAhead: false,
   seed: true,
   ...partial,
 });
+
+export function normalizeIngredients(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item ?? "").trim()).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
 
 export const SEED_MEALS = [
   meal({

@@ -500,6 +500,64 @@ h2 {
   resize: vertical;
 }
 
+.ingredient-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.ingredient-add input {
+  width: 100%;
+  min-width: 0;
+}
+
+.ingredient-add .primary {
+  width: auto;
+  min-width: 72px;
+  padding: 0 16px;
+}
+
+.ingredient-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ingredient-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fffdf8;
+}
+
+.ingredient-row span {
+  min-width: 0;
+  font-weight: 650;
+}
+
+.ingredient-row .ghost {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+
+.ingredient-bullets {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.ingredient-bullets li {
+  margin: 4px 0;
+}
+
 .type-picks {
   display: flex;
   flex-wrap: wrap;
