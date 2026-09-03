@@ -62,7 +62,32 @@ function drawScaled(source, width, height) {
   return canvas;
 }
 
-export async function compressImageFile(file, { maxEdge = 1600, thumbEdge = 240, quality = 0.8 } = {}) {
+export const MAX_PHOTO_DATA_URL = 700 * 1024;
+
+export function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Could not read that photo"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export async function dataUrlToRecord(dataUrl, extra = {}) {
+  if (!dataUrl || typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) return null;
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  return {
+    blob,
+    thumbBlob: extra.thumbBlob || blob,
+    mime: extra.mime || blob.type || "image/jpeg",
+    width: extra.width || 0,
+    height: extra.height || 0,
+    updatedAt: extra.updatedAt || Date.now(),
+  };
+}
+
+export async function compressImageFile(file, { maxEdge = 1200, thumbEdge = 240, quality = 0.72 } = {}) {
   if (!file || !file.type.startsWith("image/")) {
     throw new Error("That file is not a photo");
   }
@@ -70,15 +95,22 @@ export async function compressImageFile(file, { maxEdge = 1600, thumbEdge = 240,
   try {
     const fullSize = scaleSize(bitmap.width, bitmap.height, maxEdge);
     const thumbSize = scaleSize(bitmap.width, bitmap.height, thumbEdge);
-    const mime = preferredMime();
-    const blob = await canvasToBlob(drawScaled(bitmap, fullSize.width, fullSize.height), mime, quality);
-    const thumbBlob = await canvasToBlob(drawScaled(bitmap, thumbSize.width, thumbSize.height), mime, 0.72);
+    const mime = "image/jpeg";
+    let nextQuality = quality;
+    let outSize = fullSize;
+    let blob = await canvasToBlob(drawScaled(bitmap, outSize.width, outSize.height), mime, nextQuality);
+    while (blob.size * 1.37 > MAX_PHOTO_DATA_URL && nextQuality > 0.42) {
+      nextQuality = Math.max(0.42, nextQuality - 0.12);
+      outSize = scaleSize(bitmap.width, bitmap.height, nextQuality < 0.55 ? 960 : maxEdge);
+      blob = await canvasToBlob(drawScaled(bitmap, outSize.width, outSize.height), mime, nextQuality);
+    }
+    const thumbBlob = await canvasToBlob(drawScaled(bitmap, thumbSize.width, thumbSize.height), mime, 0.68);
     return {
       blob,
       thumbBlob,
       mime,
-      width: fullSize.width,
-      height: fullSize.height,
+      width: outSize.width,
+      height: outSize.height,
     };
   } finally {
     bitmap.close?.();
@@ -119,6 +151,46 @@ export async function getMealPhoto(mealId) {
   } finally {
     db.close();
   }
+}
+
+export async function listMealPhotos() {
+  const db = await openPhotoDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readonly");
+      const request = tx.objectStore(STORE).getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error || new Error("Could not list photos"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function photoToSyncFields(record) {
+  if (!record?.blob) return { photo: "", photoThumb: "", photoMime: "", photoWidth: 0, photoHeight: 0 };
+  let blob = record.blob;
+  let width = record.width || 0;
+  let height = record.height || 0;
+  let dataUrl = await blobToDataUrl(blob);
+  if (dataUrl.length > MAX_PHOTO_DATA_URL) {
+    const file = new File([blob], "meal.jpg", { type: record.mime || blob.type || "image/jpeg" });
+    const compressed = await compressImageFile(file, { maxEdge: 960, quality: 0.58 });
+    blob = compressed.blob;
+    width = compressed.width;
+    height = compressed.height;
+    dataUrl = await blobToDataUrl(blob);
+  }
+  if (dataUrl.length > MAX_PHOTO_DATA_URL) {
+    return { photo: "", photoThumb: "", photoMime: "", photoWidth: 0, photoHeight: 0 };
+  }
+  return {
+    photo: dataUrl,
+    photoThumb: await blobToDataUrl(record.thumbBlob || blob),
+    photoMime: record.mime || blob.type || "image/jpeg",
+    photoWidth: width,
+    photoHeight: height,
+  };
 }
 
 export async function deleteMealPhoto(mealId) {

@@ -21,6 +21,7 @@ const KEYS = {
   plan: "fm.weeklyPlan",
   grocery: "fm.grocery",
   migrations: "fm.migrations",
+  familyCode: "fm.familyCode",
 };
 
 const SEED_IDS = new Set(SEED_MEALS.map((meal) => meal.id));
@@ -548,4 +549,86 @@ export function saveGrocery(grocery) {
     version: 3,
     stores: grocery.stores,
   });
+}
+
+export function loadFamilyCode() {
+  const raw = read(KEYS.familyCode, "");
+  const code = String(raw || "").toUpperCase();
+  return /^[A-Z0-9]{6}$/.test(code) ? code : "";
+}
+
+export function saveFamilyCode(code) {
+  write(KEYS.familyCode, String(code || "").toUpperCase());
+}
+
+export function replaceUserMeals(meals) {
+  write(
+    KEYS.userMeals,
+    (Array.isArray(meals) ? meals : []).map((meal) => ({
+      id: meal.id,
+      name: meal.name,
+      types: meal.types,
+      notes: meal.notes || "",
+      recipeUrl: meal.recipeUrl || "",
+      ingredients: normalizeIngredients(meal.ingredients),
+      makeAhead: Boolean(meal.makeAhead),
+      seed: false,
+    }))
+  );
+}
+
+export function replaceSeedEdits(edits) {
+  write(KEYS.seedEdits, edits && typeof edits === "object" ? edits : {});
+}
+
+export function replaceHiddenSeedIds(ids) {
+  write(KEYS.hidden, Array.isArray(ids) ? ids.filter(Boolean) : []);
+}
+
+export function applyRemoteMeals(meals) {
+  const userMeals = [];
+  const seedEdits = {};
+  const hidden = [];
+  for (const meal of Array.isArray(meals) ? meals : []) {
+    if (!meal?.id) continue;
+    if (meal.hidden) hidden.push(meal.id);
+    if (meal.seed || SEED_IDS.has(meal.id)) {
+      seedEdits[meal.id] = {
+        name: meal.name,
+        types: meal.types,
+        notes: meal.notes || "",
+        recipeUrl: meal.recipeUrl || "",
+        ingredients: normalizeIngredients(meal.ingredients),
+        makeAhead: Boolean(meal.makeAhead),
+      };
+    } else {
+      userMeals.push(meal);
+    }
+  }
+  replaceUserMeals(userMeals);
+  replaceSeedEdits(seedEdits);
+  replaceHiddenSeedIds(hidden);
+}
+
+export function applyRemotePlan(weekdays) {
+  if (!weekdays || typeof weekdays !== "object") return loadPlan();
+  const plan = normalizeV5({ weekdays });
+  write(KEYS.plan, { version: 5, weekdays: plan.weekdays });
+  return plan;
+}
+
+export function applyRemoteGrocery(stores) {
+  const grocery = {
+    stores: (Array.isArray(stores) ? stores : []).map(normalizeGroceryStore).filter(Boolean),
+  };
+  saveGrocery(grocery);
+  return grocery;
+}
+
+export function exportSyncMeals() {
+  return loadMeals();
+}
+
+export function exportHiddenSeedIds() {
+  return read(KEYS.hidden, []);
 }
