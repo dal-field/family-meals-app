@@ -1,0 +1,15 @@
+{
+  "name": "family-meals-app",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --base /family-meals-app/",
+    "check:seed": "node scripts/check-seed.mjs"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5"
+  }
+}
