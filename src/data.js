@@ -48,14 +48,12 @@ export const SEED_MEALS = [
     id: "boiled-eggs-toast",
     name: "2 boiled eggs, toast",
     types: ["breakfast"],
-    notes: "From the weekly plan. Related Sunday prep: boiled eggs and smoothies.",
   }),
   meal({
     id: "boiled-eggs-smoothies",
     name: "Boiled eggs, smoothies",
     types: ["breakfast"],
     makeAhead: true,
-    notes: "Make-ahead breakfast — prep Sunday night.",
   }),
   meal({
     id: "ham-sandwich",
@@ -66,7 +64,6 @@ export const SEED_MEALS = [
     id: "spaghetti",
     name: "Spaghetti",
     types: ["dinner"],
-    notes: "Weekly plan often serves this with toast and peas.",
   }),
   meal({
     id: "apples-and-pb",
@@ -78,7 +75,6 @@ export const SEED_MEALS = [
     name: "Burritos",
     types: ["breakfast", "dinner"],
     makeAhead: true,
-    notes: "Works for breakfast or dinner. Make ahead. Tuesday dinner is often served with rice and corn.",
   }),
   meal({
     id: "banana-sandwich",
@@ -95,7 +91,6 @@ export const SEED_MEALS = [
     name: "Sandwiches",
     types: ["breakfast", "lunch"],
     makeAhead: true,
-    notes: "Make-ahead breakfast. Use whatever filling is on hand.",
   }),
   meal({
     id: "tuna-sandwich",
@@ -126,7 +121,6 @@ export const SEED_MEALS = [
     id: "ck-green-bean-casserole",
     name: "Chicken green bean casserole",
     types: ["dinner"],
-    notes: "Dinner idea list: Ck green bean casserole. Weekly plan often adds carrots and homemade bread.",
   }),
   meal({
     id: "protein-shake",
@@ -158,7 +152,6 @@ export const SEED_MEALS = [
     name: "Crepes",
     types: ["breakfast"],
     makeAhead: true,
-    notes: "Make-ahead breakfast. See also savory crepes for dinner.",
   }),
   meal({
     id: "hot-dogs",
@@ -169,7 +162,6 @@ export const SEED_MEALS = [
     id: "bbq-pork-sandwiches",
     name: "Bbq pork sandwiches",
     types: ["dinner"],
-    notes: "Saturday weekly plan: pork sandwiches.",
   }),
   meal({
     id: "eggs-cereal",
@@ -185,7 +177,6 @@ export const SEED_MEALS = [
     id: "chicken-pillows",
     name: "Chicken pillows",
     types: ["dinner"],
-    notes: "Weekly plan often serves this with corn and salad.",
   }),
   meal({
     id: "white-ck-chili",
@@ -241,7 +232,6 @@ export const SEED_MEALS = [
     id: "chicken-thighs-costco",
     name: "Chicken thighs (Costco)",
     types: ["dinner"],
-    notes: "Costco.",
   }),
   meal({
     id: "chili-mac",
@@ -292,13 +282,11 @@ export const SEED_MEALS = [
     id: "curry-chicken-costco",
     name: "Curry chicken (Costco)",
     types: ["dinner"],
-    notes: "Costco.",
   }),
   meal({
     id: "florentine-ck-costco",
     name: "Florentine Ck (Costco)",
     types: ["dinner"],
-    notes: "Costco.",
   }),
   meal({
     id: "tilapia",
@@ -315,7 +303,6 @@ export const SEED_MEALS = [
     name: "Taquitos",
     types: ["dinner"],
     recipeUrl: "https://ourbestbites.com/baked-creamy-chicken-taquitos/?utm_source=pinterest&utm_medium=social",
-    notes: "Baked creamy chicken taquitos.",
   }),
   meal({
     id: "meatballs-and-sauce",
