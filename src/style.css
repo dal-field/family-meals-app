@@ -93,14 +93,19 @@ a {
   font-size: 0.68rem;
 }
 
-.week-nav {
-  display: grid;
-  justify-items: center;
+.topbar.week-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
   margin-bottom: 8px;
 }
 
-.week-nav .kicker {
-  margin-bottom: 2px;
+.topbar.week-nav .kicker {
+  width: 100%;
+  margin: 0 0 2px;
+  text-align: center;
 }
 
 .week-nav-row {
