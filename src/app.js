@@ -227,7 +227,6 @@ export function createApp(root) {
       <section class="card hero today-dinner">
         <div class="label">Tonight’s dinner</div>
         <h2>${escapeHtml(dinner)}</h2>
-        <p class="meta">${escapeHtml(today.title)} · tap any slot below to change it</p>
       </section>
 
       <div class="week-list">
