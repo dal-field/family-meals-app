@@ -1,4 +1,4 @@
-import { SEED_MEALS, SEED_MIDWEEK, SEED_PLAN, DAYS, SLOTS } from "./data.js";
+import { SEED_MEALS, SEED_PLAN, DAYS, SLOTS } from "./data.js";
 
 const KEYS = {
   userMeals: "fm.userMeals",
@@ -119,29 +119,38 @@ export function savePlan(plan) {
   write(KEYS.plan, plan);
 }
 
+function normalizeGroceryItem(item) {
+  if (!item || !item.id || !item.name) return null;
+  return {
+    id: String(item.id),
+    name: String(item.name),
+    checked: Boolean(item.checked),
+    store: typeof item.store === "string" ? item.store.trim() : "",
+  };
+}
+
 export function loadGrocery() {
   const saved = read(KEYS.grocery, null);
-  const midweek = SEED_MIDWEEK.map((item) => ({
-    ...item,
-    checked: Boolean(saved?.midweek?.[item.id]),
-    seed: true,
-  }));
-  const extras = Array.isArray(saved?.extras)
-    ? saved.extras
-        .filter((item) => item && item.id && item.name)
-        .map((item) => ({
-          id: item.id,
-          name: item.name,
-          checked: Boolean(item.checked),
-          seed: false,
-        }))
-    : [];
-  return { midweek, extras };
+  if (saved?.version === 2 && Array.isArray(saved.items)) {
+    return {
+      items: saved.items.map(normalizeGroceryItem).filter(Boolean),
+      customStores: Array.isArray(saved.customStores)
+        ? saved.customStores.filter((name) => typeof name === "string" && name.trim())
+        : [],
+    };
+  }
+
+  const extras = Array.isArray(saved?.extras) ? saved.extras : [];
+  return {
+    items: extras.map(normalizeGroceryItem).filter(Boolean),
+    customStores: [],
+  };
 }
 
 export function saveGrocery(grocery) {
   write(KEYS.grocery, {
-    midweek: Object.fromEntries(grocery.midweek.map((item) => [item.id, item.checked])),
-    extras: grocery.extras,
+    version: 2,
+    items: grocery.items,
+    customStores: grocery.customStores || [],
   });
 }

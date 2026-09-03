@@ -424,7 +424,11 @@ h2 {
 
 .sheet-actions {
   flex: 0 0 auto;
-  padding-top: 4px;
+  padding-top: 10px;
+}
+
+.sheet .search {
+  margin-bottom: 10px;
 }
 
 .sheet h2 {
@@ -567,12 +571,25 @@ h2 {
   font-weight: 750;
 }
 
+.grocery-add {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.grocery-add-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
 .grocery-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   min-height: var(--tap);
-  padding: 8px 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -580,14 +597,58 @@ h2 {
   border-bottom: 0;
 }
 
-.grocery-item input {
+.grocery-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: var(--tap);
+}
+
+.grocery-item input[type="checkbox"] {
   width: 22px;
   height: 22px;
 }
 
-.grocery-item.is-done span {
+.grocery-item.is-done .grocery-check span {
   text-decoration: line-through;
   color: var(--muted);
+}
+
+.grocery-delete {
+  min-width: 44px;
+  padding: 0 10px;
+}
+
+.store-select {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fffdf8;
+  padding: 0 10px;
+  font-weight: 700;
+}
+
+.store-select-row {
+  max-width: 128px;
+  font-size: 0.82rem;
+}
+
+.store-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.store-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.82rem;
+  font-weight: 750;
 }
 
 .add-row {

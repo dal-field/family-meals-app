@@ -398,6 +398,44 @@ export function todayDayId(now = new Date()) {
   return map[now.getDay()];
 }
 
+export function daysStartingToday(now = new Date()) {
+  const today = todayDayId(now);
+  const index = DAYS.findIndex((day) => day.id === today);
+  if (index < 0) return DAYS;
+  return [...DAYS.slice(index), ...DAYS.slice(0, index)];
+}
+
+export const STORE_PRESETS = ["Costco", "Walmart", "Target", "Aldi", "Smith's"];
+
+const STORE_COLORS = {
+  costco: { bg: "#d6e6f7", fg: "#1d4d86" },
+  walmart: { bg: "#d4efe4", fg: "#0b5c3c" },
+  target: { bg: "#f8d6dc", fg: "#9a1c30" },
+  aldi: { bg: "#f4e3c0", fg: "#7a4a0c" },
+  "smith's": { bg: "#e5dcf6", fg: "#4a2a7a" },
+};
+
+const STORE_FALLBACK = [
+  { bg: "#f3ddd0", fg: "#7a3b1c" },
+  { bg: "#d7eef2", fg: "#1b5c66" },
+  { bg: "#eee3c9", fg: "#6b5310" },
+  { bg: "#e8d6e8", fg: "#6a2d63" },
+  { bg: "#dce8d4", fg: "#3a5a22" },
+];
+
+export function storeKey(name) {
+  return String(name || "").trim().toLowerCase();
+}
+
+export function storeColor(name) {
+  const key = storeKey(name);
+  if (!key) return { bg: "#ece6dc", fg: "#5c564c" };
+  if (STORE_COLORS[key]) return STORE_COLORS[key];
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return STORE_FALLBACK[hash % STORE_FALLBACK.length];
+}
+
 export function slugify(name) {
   return name
     .toLowerCase()
