@@ -47,6 +47,7 @@ export function createApp(root) {
     showHidden: false,
     selectedId: null,
     picker: null,
+    expandedDay: todayDayId(),
     pickerQuery: "",
     oneOff: "",
     editingId: null,
@@ -225,13 +226,27 @@ export function createApp(root) {
   }
 
   function dayCard(day, today) {
+    const open = state.expandedDay === day.id;
+    const dinner = slotText(state.plan[day.id].dinner);
     return `
-      <article class="card day-card ${day.id === today ? "is-today" : ""}">
-        <div class="day-head">
-          <h3>${day.label}</h3>
-          ${day.id === today ? `<span class="today-pill">Today</span>` : ""}
-        </div>
-        <div class="slots">
+      <article class="card day-card ${day.id === today ? "is-today" : ""} ${open ? "is-open" : "is-collapsed"}">
+        <button class="day-toggle" type="button" data-toggle-day="${day.id}" aria-expanded="${open}">
+          <span class="day-toggle-text">
+            <span class="day-title-row">
+              <h3>${day.label}</h3>
+              ${day.id === today ? `<span class="today-pill">Today</span>` : ""}
+            </span>
+            ${
+              open
+                ? ""
+                : `<span class="day-summary">${escapeHtml(dinner || "No dinner planned")}</span>`
+            }
+          </span>
+          <span class="chevron" aria-hidden="true">${open ? "▴" : "▾"}</span>
+        </button>
+        ${
+          open
+            ? `<div class="slots">
           ${SLOTS.map((slot) => {
             const value = slotText(state.plan[day.id][slot.id]);
             return `
@@ -245,7 +260,9 @@ export function createApp(root) {
                 <span class="value">${escapeHtml(value || "Tap to add")}</span>
               </button>`;
           }).join("")}
-        </div>
+        </div>`
+            : ""
+        }
       </article>
     `;
   }
@@ -450,13 +467,8 @@ export function createApp(root) {
               Or type a one-off
               <input name="oneOff" value="${escapeAttr(state.oneOff)}" placeholder="Something simple for tonight" />
             </label>
-            <div class="actions sheet-actions">
-              <button class="primary" type="submit">Use this</button>
-              <button class="ghost" type="button" data-clear-slot>Clear slot</button>
-              <button class="ghost" type="button" data-close-picker>Cancel</button>
-            </div>
           </form>
-          <div class="sheet-body" style="margin-top:12px">
+          <div class="sheet-body">
             <div class="meal-list">
               ${meals
                 .slice(0, 40)
@@ -472,6 +484,11 @@ export function createApp(root) {
                 .join("")}
             </div>
           </div>
+          <div class="actions sheet-actions">
+            <button class="primary" type="button" data-submit-one-off>Use this</button>
+            <button class="ghost" type="button" data-clear-slot>Clear slot</button>
+            <button class="ghost" type="button" data-close-picker>Cancel</button>
+          </div>
         </aside>
       </div>
     `;
@@ -483,6 +500,14 @@ export function createApp(root) {
         state.editingId = null;
         state.form = emptyForm();
         go(button.dataset.tab);
+      });
+    });
+
+    root.querySelectorAll("[data-toggle-day]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const id = button.dataset.toggleDay;
+        state.expandedDay = state.expandedDay === id ? null : id;
+        render();
       });
     });
 
@@ -664,6 +689,13 @@ export function createApp(root) {
         render();
       });
     });
+
+    const submitOneOff = root.querySelector("[data-submit-one-off]");
+    if (submitOneOff) {
+      submitOneOff.addEventListener("click", () => {
+        root.querySelector("[data-one-off]")?.requestSubmit();
+      });
+    }
 
     const oneOff = root.querySelector("[data-one-off]");
     if (oneOff) {
