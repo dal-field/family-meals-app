@@ -66,6 +66,7 @@ export function createApp(root) {
     expandedDay: localDateKey(new Date()),
     clearConfirm: null,
     swap: null,
+    weekSlotDetail: null,
     pickerQuery: "",
     oneOff: "",
     editingId: null,
@@ -191,6 +192,7 @@ export function createApp(root) {
       ${state.picker ? pickerSheet() : ""}
       ${state.clearConfirm ? clearConfirmSheet() : ""}
       ${state.swap ? swapSheet() : ""}
+      ${state.weekSlotDetail ? weekSlotDetailSheet() : ""}
       ${state.storeDialog ? storeDialogSheet() : ""}
       ${state.toast ? `<div class="toast" role="status">${escapeHtml(state.toast)}</div>` : ""}
     `;
@@ -281,13 +283,13 @@ export function createApp(root) {
           ${SLOTS.map((slot) => {
             const value = slotText(plan[slot.id]);
             const canSwap = slotHasMeal(plan[slot.id]);
+            const filled = Boolean(value);
             return `
               <div class="slot-row">
                 <button
-                  class="slot-btn ${slot.id === "dinner" ? "is-dinner" : ""} ${value ? "" : "is-empty"}"
+                  class="slot-btn ${slot.id === "dinner" ? "is-dinner" : ""} ${filled ? "" : "is-empty"}"
                   type="button"
-                  data-day="${day.key}"
-                  data-slot="${slot.id}"
+                  ${filled ? `data-view-slot="${day.key}:${slot.id}"` : `data-assign-slot="${day.key}:${slot.id}"`}
                 >
                   <span class="kind">${slot.label}</span>
                   <span class="value">${escapeHtml(value || "Tap to add")}</span>
@@ -551,6 +553,70 @@ export function createApp(root) {
     `;
   }
 
+  function mealDetailBlocks(meal) {
+    const ingredients = normalizeIngredients(meal.ingredients);
+    return `
+      <div class="badge-row">
+        ${meal.types.map((type) => `<span class="badge">${TYPE_LABEL[type]}</span>`).join("")}
+        ${meal.makeAhead ? `<span class="badge">Make-ahead</span>` : ""}
+        ${meal.hidden ? `<span class="badge">Hidden</span>` : ""}
+      </div>
+      ${
+        meal.notes
+          ? `<div class="detail-block"><h3>Notes</h3><p>${escapeHtml(meal.notes)}</p></div>`
+          : ""
+      }
+      ${
+        ingredients.length
+          ? `<div class="detail-block">
+              <h3>Ingredients</h3>
+              <ul class="ingredient-bullets">
+                ${ingredients.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+              </ul>
+            </div>`
+          : ""
+      }
+      ${
+        meal.recipeUrl
+          ? `<a class="recipe-link" href="${escapeAttr(meal.recipeUrl)}" target="_blank" rel="noopener noreferrer">Open recipe</a>`
+          : ""
+      }
+    `;
+  }
+
+  function weekSlotDetailSheet() {
+    const context = resolveWeekSlotDetail(state.weekSlotDetail);
+    if (!context) return "";
+    const { day, slotMeta, meal, oneOffName } = context;
+    const title = meal ? meal.name : oneOffName;
+    const ingredients = meal ? normalizeIngredients(meal.ingredients) : [];
+
+    return `
+      <div class="sheet-backdrop" data-close-week-slot>
+        <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="week-slot-title">
+          <div class="sheet-body">
+            <p class="kicker">${escapeHtml(day.title)} · ${escapeHtml(slotMeta.label)}</p>
+            <h2 id="week-slot-title">${escapeHtml(title)}</h2>
+            ${
+              meal
+                ? mealDetailBlocks(meal)
+                : `<div class="badge-row"><span class="badge">One-off plan</span></div>`
+            }
+          </div>
+          <div class="actions sheet-actions">
+            ${
+              meal && ingredients.length
+                ? `<button class="primary" type="button" data-send-grocery="${meal.id}">Add to groceries</button>`
+                : ""
+            }
+            <button class="ghost" type="button" data-change-week-slot>Change this meal</button>
+            <button class="ghost" type="button" data-close-week-slot>Close</button>
+          </div>
+        </aside>
+      </div>
+    `;
+  }
+
   function mealSheet() {
     const meal = mealById(state.selectedId);
     if (!meal) return "";
@@ -561,31 +627,7 @@ export function createApp(root) {
           <div class="sheet-body">
             <p class="kicker">${meal.seed ? "Family recipe" : "Your meal"}</p>
             <h2 id="meal-title">${escapeHtml(meal.name)}</h2>
-            <div class="badge-row">
-              ${meal.types.map((type) => `<span class="badge">${TYPE_LABEL[type]}</span>`).join("")}
-              ${meal.makeAhead ? `<span class="badge">Make-ahead</span>` : ""}
-              ${meal.hidden ? `<span class="badge">Hidden</span>` : ""}
-            </div>
-            ${
-              meal.notes
-                ? `<div class="detail-block"><h3>Notes</h3><p>${escapeHtml(meal.notes)}</p></div>`
-                : ""
-            }
-            ${
-              ingredients.length
-                ? `<div class="detail-block">
-                    <h3>Ingredients</h3>
-                    <ul class="ingredient-bullets">
-                      ${ingredients.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-                    </ul>
-                  </div>`
-                : ""
-            }
-            ${
-              meal.recipeUrl
-                ? `<a class="recipe-link" href="${escapeAttr(meal.recipeUrl)}" target="_blank" rel="noopener noreferrer">Open recipe</a>`
-                : ""
-            }
+            ${mealDetailBlocks(meal)}
           </div>
           <div class="actions sheet-actions">
             ${
@@ -731,16 +773,35 @@ export function createApp(root) {
       });
     });
 
-    root.querySelectorAll("[data-day]").forEach((button) => {
+    root.querySelectorAll("[data-view-slot]").forEach((button) => {
       button.addEventListener("click", () => {
-        const day = weekDays().find((item) => item.key === button.dataset.day);
-        if (!day) return;
-        state.picker = { day, slot: button.dataset.slot };
-        state.pickerQuery = "";
-        state.oneOff = "";
+        const context = parseWeekSlotRef(button.dataset.viewSlot);
+        if (!context) return;
+        state.weekSlotDetail = context;
         render();
       });
     });
+
+    root.querySelectorAll("[data-assign-slot]").forEach((button) => {
+      button.addEventListener("click", () => {
+        openWeekSlotPicker(parseWeekSlotRef(button.dataset.assignSlot));
+      });
+    });
+
+    root.querySelectorAll("[data-close-week-slot]").forEach((node) => {
+      node.addEventListener("click", (event) => {
+        if (node.classList.contains("sheet-backdrop") && event.target !== node) return;
+        state.weekSlotDetail = null;
+        render();
+      });
+    });
+
+    const changeWeekSlot = root.querySelector("[data-change-week-slot]");
+    if (changeWeekSlot) {
+      changeWeekSlot.addEventListener("click", () => {
+        openWeekSlotPicker(state.weekSlotDetail);
+      });
+    }
 
     root.querySelectorAll("[data-clear-day]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -1158,6 +1219,34 @@ export function createApp(root) {
   function formFocus(selector) {
     const next = root.querySelector(selector);
     if (next) next.focus();
+  }
+
+  function parseWeekSlotRef(ref) {
+    const [dayKey, slotId] = String(ref || "").split(":");
+    const day = weekDays().find((item) => item.key === dayKey);
+    if (!day || !SLOTS.some((item) => item.id === slotId)) return null;
+    return { day, slot: slotId };
+  }
+
+  function resolveWeekSlotDetail(detail) {
+    if (!detail?.day || !detail.slot) return null;
+    const slotMeta = SLOTS.find((item) => item.id === detail.slot);
+    if (!slotMeta) return null;
+    const cell = resolveDayPlan(state.plan, detail.day)[detail.slot];
+    if (!slotHasMeal(cell)) return null;
+    const meal = cell.mealId ? mealById(cell.mealId) : null;
+    const oneOffName = meal ? null : slotText(cell);
+    if (!meal && !oneOffName) return null;
+    return { day: detail.day, slotMeta, meal, oneOffName };
+  }
+
+  function openWeekSlotPicker(detail) {
+    if (!detail?.day || !detail.slot) return;
+    state.weekSlotDetail = null;
+    state.picker = { day: detail.day, slot: detail.slot };
+    state.pickerQuery = "";
+    state.oneOff = "";
+    render();
   }
 
   function findGroceryStore(storeId) {
