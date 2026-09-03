@@ -1,6 +1,6 @@
-import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, emptySlot, formatWeekRange, localDateKey, normalizeIngredients, rollingDays, shiftMonday } from "../src/data.js";
+import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, emptySlot, normalizeIngredients, weekTemplateDays } from "../src/data.js";
 import { resolvedMealPhotoSrc, scaleSize } from "../src/photos.js";
-import { clearDayPlan, clearImprovisedSeedNotes, dayHasMeals, freshPlan, loadMeals, migrateLegacyGrocery, migratePlanToV4, resolveDayPlan, saveSeedEdit, setPlanSlot, slotHasMeal, swapDaySlots } from "../src/storage.js";
+import { clearDayPlan, clearImprovisedSeedNotes, dayHasMeals, freshPlan, loadMeals, migrateLegacyGrocery, migratePlanToV5, resolveDayPlan, saveSeedEdit, setPlanSlot, slotHasMeal, swapDaySlots } from "../src/storage.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
 const required = [
@@ -111,21 +111,21 @@ if (new Set(SEED_MEALS.map((meal) => meal.id)).size !== SEED_MEALS.length) {
 }
 
 const thursday = new Date("2026-09-03T12:00:00");
-const rolling = rollingDays(thursday);
-const dayByWeekday = (days, id) => days.find((day) => day.weekdayId === id);
-if (rolling.map((day) => day.compact).join(",") !== "M,Tu,W,Th,F,Sa,Su") {
-  console.error("Week must be Monday–Sunday top to bottom", rolling.map((day) => day.compact));
+const days = weekTemplateDays(thursday);
+const dayByWeekday = (list, id) => list.find((day) => day.weekdayId === id);
+if (days.map((day) => day.compact).join(",") !== "M,Tu,W,Th,F,Sa,Su") {
+  console.error("Week must be Monday–Sunday top to bottom", days.map((day) => day.compact));
   process.exit(1);
 }
-if (rolling.map((day) => day.title).join("|") !== "Monday (8/31)|Tuesday (9/1)|Wednesday (9/2)|Thursday (9/3)|Friday (9/4)|Saturday (9/5)|Sunday (9/6)") {
-  console.error("Calendar-week titles mismatch", rolling.map((day) => day.title));
+if (days.map((day) => day.title).join("|") !== "Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday") {
+  console.error("Weekday titles must not include calendar dates", days.map((day) => day.title));
   process.exit(1);
 }
-if (rolling.filter((day) => day.seedable).map((day) => day.key).join(",") !== "2026-08-31,2026-09-01,2026-09-02,2026-09-03,2026-09-04,2026-09-05,2026-09-06") {
-  console.error("Current Mon–Sun week should be seedable", rolling);
+if (days.some((day) => day.dateLabel || /\d/.test(day.title))) {
+  console.error("Template days must not carry dates", days);
   process.exit(1);
 }
-if (!dayByWeekday(rolling, "thursday").isToday || dayByWeekday(rolling, "monday").isToday) {
+if (!dayByWeekday(days, "thursday").isToday || dayByWeekday(days, "monday").isToday) {
   console.error("Today highlight must stay on Thursday, not the first row");
   process.exit(1);
 }
@@ -135,17 +135,14 @@ if (DAYS.map((day) => day.compact).join(",") !== "M,Tu,W,Th,F,Sa,Su") {
   process.exit(1);
 }
 
-const thisThursday = dayByWeekday(rolling, "thursday");
-const thisFriday = dayByWeekday(rolling, "friday");
-const thisMonday = dayByWeekday(rolling, "monday");
-const nextWeek = rollingDays(new Date("2026-09-10T12:00:00"));
-const nextWeekMonday = dayByWeekday(nextWeek, "monday");
-const nextWeekThursday = dayByWeekday(nextWeek, "thursday");
+const thisThursday = dayByWeekday(days, "thursday");
+const thisFriday = dayByWeekday(days, "friday");
+const thisMonday = dayByWeekday(days, "monday");
 
-const plan = freshPlan(thursday);
+const plan = freshPlan();
 const thursdayPlan = resolveDayPlan(plan, thisThursday);
 if (thursdayPlan.dinner.mealId !== "ck-green-bean-casserole") {
-  console.error("Current-week Thursday should use seed dinner");
+  console.error("Thursday should use the seed dinner");
   process.exit(1);
 }
 if (thursdayPlan.breakfast.mealId !== "protein-pancakes") {
@@ -155,73 +152,20 @@ if (thursdayPlan.breakfast.mealId !== "protein-pancakes") {
 
 const thisMondayPlan = resolveDayPlan(plan, thisMonday);
 if (thisMondayPlan.breakfast.mealId !== "boiled-eggs-toast") {
-  console.error("This Monday should keep recurring breakfast", thisMondayPlan.breakfast);
+  console.error("Monday should keep recurring breakfast", thisMondayPlan.breakfast);
   process.exit(1);
 }
 if (thisMondayPlan.dinner.mealId !== "spaghetti") {
-  console.error("This Monday dinner should stay on this calendar week", thisMondayPlan.dinner);
+  console.error("Monday dinner should stay on the repeating template", thisMondayPlan.dinner);
   process.exit(1);
 }
 
-const nextMonday = resolveDayPlan(plan, nextWeekMonday);
-if (nextMonday.breakfast.mealId !== "boiled-eggs-toast") {
-  console.error("Next Monday should keep recurring breakfast", nextMonday.breakfast);
-  process.exit(1);
-}
-if (slotHasMeal(nextMonday.dinner)) {
-  console.error("Next Monday dinner should start blank", nextMonday.dinner);
+if (!dayHasMeals(plan, thisThursday) || !dayHasMeals(plan, thisMonday)) {
+  console.error("Seeded weekdays should report meals");
   process.exit(1);
 }
 
-const rolledThursday = resolveDayPlan(plan, nextWeekThursday);
-if (rolledThursday.breakfast.mealId !== "protein-pancakes" || rolledThursday.lunch.mealId !== "turkey-cheese-roll-up") {
-  console.error("Next week Thursday should keep recurring breakfast/lunch", rolledThursday);
-  process.exit(1);
-}
-if (slotHasMeal(rolledThursday.dinner)) {
-  console.error("Next week Thursday dinner should stay blank", rolledThursday.dinner);
-  process.exit(1);
-}
-
-const laterNow = new Date("2026-09-17T12:00:00");
-const pastWeek = rollingDays(thursday, laterNow);
-const historicThursday = dayByWeekday(pastWeek, "thursday");
-if (historicThursday.key !== "2026-09-03") {
-  console.error("Browsing back should still open the original Thursday date", historicThursday);
-  process.exit(1);
-}
-if (resolveDayPlan(plan, historicThursday).dinner.mealId !== "ck-green-bean-casserole") {
-  console.error("Past dinners must remain when navigating back to that week", resolveDayPlan(plan, historicThursday).dinner);
-  process.exit(1);
-}
-
-if (formatWeekRange(new Date("2026-04-03T12:00:00"), new Date("2026-04-09T12:00:00")) !== "Apr 3 – 9") {
-  console.error("Same-month week range should omit the repeated month");
-  process.exit(1);
-}
-if (formatWeekRange(new Date("2026-08-31T12:00:00"), new Date("2026-09-06T12:00:00")) !== "Aug 31 – Sep 6") {
-  console.error("Cross-month week range should name both months");
-  process.exit(1);
-}
-if (formatWeekRange(new Date("2026-12-28T12:00:00"), new Date("2027-01-03T12:00:00")) !== "Dec 28 – Jan 3, 2027") {
-  console.error("Year-crossing week range should include the end year");
-  process.exit(1);
-}
-if (localDateKey(shiftMonday(thursday, 1)) !== "2026-09-07" || localDateKey(shiftMonday(thursday, -1)) !== "2026-08-24") {
-  console.error("Week arrows should move by full Monday–Sunday weeks");
-  process.exit(1);
-}
-
-if (!dayHasMeals(plan, thisThursday)) {
-  console.error("Seeded Thursday should report meals");
-  process.exit(1);
-}
-if (!dayHasMeals(plan, nextWeekMonday)) {
-  console.error("Next Monday should still report recurring meals");
-  process.exit(1);
-}
-
-const writable = freshPlan(thursday);
+const writable = freshPlan();
 clearDayPlan(writable, thisThursday);
 if (dayHasMeals(writable, thisThursday)) {
   console.error("Cleared Thursday should not still report meals");
@@ -232,28 +176,27 @@ if (clearedThursday.breakfast.mealId || clearedThursday.dinner.label) {
   console.error("Cleared Thursday should stay empty and not re-seed", clearedThursday);
   process.exit(1);
 }
-if (slotHasMeal(writable.dinners["2026-09-03"])) {
-  console.error("Clear must persist the empty Thursday dinner", writable.dinners["2026-09-03"]);
+if (writable.weekdays.thursday.dinner.mealId || writable.weekdays.thursday.breakfast.mealId) {
+  console.error("Clear must persist the empty Thursday template", writable.weekdays.thursday);
   process.exit(1);
 }
-if (writable.dinners["2026-09-04"]?.mealId !== "beef-stroganoff") {
-  console.error("Clear must not touch Friday dinner", writable.dinners);
+if (writable.weekdays.friday.dinner.mealId !== "beef-stroganoff") {
+  console.error("Clear must not touch Friday dinner", writable.weekdays.friday);
   process.exit(1);
 }
 if (writable.weekdays.friday.breakfast.mealId !== "scrambled-eggs-bacon") {
   console.error("Clear must not wipe other weekday templates", writable.weekdays.friday);
   process.exit(1);
 }
-const nextClearedThursday = resolveDayPlan(writable, nextWeekThursday);
-if (slotHasMeal(nextClearedThursday.breakfast) || slotHasMeal(nextClearedThursday.lunch) || slotHasMeal(nextClearedThursday.snack)) {
-  console.error("Clearing Thursday should clear the recurring weekday template", nextClearedThursday);
+
+const edited = freshPlan();
+setPlanSlot(edited, thisThursday, "breakfast", emptySlot());
+if (slotHasMeal(resolveDayPlan(edited, thisThursday).breakfast)) {
+  console.error("User-cleared Thursday breakfast must stay empty");
   process.exit(1);
 }
-
-const edited = freshPlan(thursday);
-setPlanSlot(edited, thisThursday, "breakfast", emptySlot());
-if (slotHasMeal(resolveDayPlan(edited, thisThursday).breakfast) || slotHasMeal(resolveDayPlan(edited, nextWeekThursday).breakfast)) {
-  console.error("User-cleared Thursday breakfast must not re-seed next week");
+if (resolveDayPlan(edited, thisThursday).dinner.mealId !== "ck-green-bean-casserole") {
+  console.error("Clearing breakfast must not wipe Thursday dinner");
   process.exit(1);
 }
 
@@ -271,7 +214,7 @@ if (normalizeIngredients(null).length) {
   process.exit(1);
 }
 
-const swapped = freshPlan(thursday);
+const swapped = freshPlan();
 swapDaySlots(swapped, thisThursday, thisFriday, "dinner");
 const thuAfterSwap = resolveDayPlan(swapped, thisThursday);
 const friAfterSwap = resolveDayPlan(swapped, thisFriday);
@@ -284,7 +227,7 @@ if (thuAfterSwap.breakfast.mealId !== "protein-pancakes" || friAfterSwap.breakfa
   process.exit(1);
 }
 
-const moved = freshPlan(thursday);
+const moved = freshPlan();
 swapDaySlots(moved, thisThursday, thisMonday, "lunch");
 const thuAfterMove = resolveDayPlan(moved, thisThursday);
 const monAfterMove = resolveDayPlan(moved, thisMonday);
@@ -300,13 +243,8 @@ if (thuAfterMove.dinner.mealId !== "ck-green-bean-casserole") {
   console.error("Moving lunch should not re-seed or clear Thursday dinner");
   process.exit(1);
 }
-const nextThuAfterLunchSwap = resolveDayPlan(moved, nextWeekThursday);
-if (nextThuAfterLunchSwap.lunch.mealId !== "ham-sandwich") {
-  console.error("Recurring lunch swap should persist into next week", nextThuAfterLunchSwap.lunch);
-  process.exit(1);
-}
 
-const migrated = migratePlanToV4(
+const migrated = migratePlanToV5(
   {
     version: 3,
     dates: {
@@ -328,20 +266,20 @@ if (migrated.weekdays.friday.breakfast.mealId !== "scrambled-eggs-bacon") {
   console.error("Unedited weekdays should keep the seed template", migrated.weekdays.friday);
   process.exit(1);
 }
-if (migrated.dinners["2026-09-03"].mealId !== "tacos") {
-  console.error("v3 Thursday dinner should stay date-keyed", migrated.dinners["2026-09-03"]);
+if (migrated.weekdays.thursday.dinner.mealId !== "tacos") {
+  console.error("Visible-week Thursday dinner should become the weekday dinner", migrated.weekdays.thursday);
   process.exit(1);
 }
-if (migrated.dinners["2026-09-04"].mealId !== "beef-stroganoff") {
-  console.error("Current-week dinners missing from v3 should keep the seed", migrated.dinners);
+if (migrated.weekdays.friday.dinner.mealId !== "beef-stroganoff") {
+  console.error("Current-week dinners missing from v3 should keep the seed", migrated.weekdays.friday);
   process.exit(1);
 }
-if (slotHasMeal(migrated.dinners["2026-09-07"] || emptySlot())) {
-  console.error("Future dinners must not be seeded during migration", migrated.dinners);
+if (migrated.dinners) {
+  console.error("v5 plans must not keep date-keyed dinners", migrated);
   process.exit(1);
 }
 
-const migratedFutureEmpty = migratePlanToV4(
+const migratedFutureEmpty = migratePlanToV5(
   {
     version: 3,
     dates: {
@@ -364,7 +302,7 @@ if (migratedFutureEmpty.weekdays.monday.lunch.mealId !== "turkey-cheese-roll-up"
   process.exit(1);
 }
 
-const migratedClear = migratePlanToV4(
+const migratedClear = migratePlanToV5(
   {
     version: 3,
     dates: {
@@ -378,12 +316,12 @@ const migratedClear = migratePlanToV4(
   },
   thursday
 );
-if (slotHasMeal(migratedClear.dinners["2026-09-03"])) {
-  console.error("User-cleared v3 dinner must stay empty after migration", migratedClear.dinners["2026-09-03"]);
+if (slotHasMeal(migratedClear.weekdays.thursday.dinner)) {
+  console.error("User-cleared visible-week dinner must stay empty after migration", migratedClear.weekdays.thursday);
   process.exit(1);
 }
 
-const alreadyV4 = migratePlanToV4(
+const alreadyV4 = migratePlanToV5(
   {
     version: 4,
     weekdays: {
@@ -393,7 +331,10 @@ const alreadyV4 = migratePlanToV4(
         snack: { mealId: null, label: "" },
       },
     },
-    dinners: {},
+    dinners: {
+      "2026-08-27": { mealId: "tacos", label: "Tacos" },
+      "2026-09-03": { mealId: "enchiladas", label: "Enchiladas" },
+    },
   },
   thursday
 );
@@ -403,6 +344,31 @@ if (slotHasMeal(alreadyV4.weekdays.thursday.breakfast)) {
 }
 if (alreadyV4.weekdays.thursday.lunch.mealId !== "ham-sandwich") {
   console.error("Existing v4 weekday lunch should be preserved", alreadyV4.weekdays.thursday);
+  process.exit(1);
+}
+if (alreadyV4.weekdays.thursday.dinner.mealId !== "enchiladas") {
+  console.error("Visible-week dinner should win over an older Thursday dinner", alreadyV4.weekdays.thursday);
+  process.exit(1);
+}
+
+const olderDinnerOnly = migratePlanToV5(
+  {
+    version: 4,
+    weekdays: {
+      monday: {
+        breakfast: { mealId: "boiled-eggs-toast", label: "2 boiled eggs, toast" },
+        lunch: { mealId: "ham-sandwich", label: "Ham sandwich" },
+        snack: { mealId: "apples-and-pb", label: "Apples and pb" },
+      },
+    },
+    dinners: {
+      "2026-08-24": { mealId: "tacos", label: "Tacos" },
+    },
+  },
+  thursday
+);
+if (olderDinnerOnly.weekdays.monday.dinner.mealId !== "tacos") {
+  console.error("When the visible week has no Monday dinner, use the most recent Monday dinner", olderDinnerOnly.weekdays.monday);
   process.exit(1);
 }
 

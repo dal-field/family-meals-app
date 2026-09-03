@@ -456,6 +456,19 @@ export function daysStartingToday(now = new Date()) {
   return rollingDays(now).map((day) => DAYS.find((item) => item.id === day.weekdayId));
 }
 
+export function weekTemplateDays(now = new Date()) {
+  const today = todayDayId(now);
+  return DAYS.map((day) => ({
+    key: day.id,
+    weekdayId: day.id,
+    label: day.label,
+    short: day.short,
+    compact: day.compact,
+    title: day.label,
+    isToday: day.id === today,
+  }));
+}
+
 export function rollingDays(weekOf = new Date(), now = weekOf) {
   const start = mondayOfWeek(weekOf);
   const todayKey = localDateKey(startOfLocalDay(now));

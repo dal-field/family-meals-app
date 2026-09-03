@@ -4,13 +4,10 @@ import {
   SLOTS,
   TYPE_ORDER,
   emptySlot,
-  formatWeekRange,
-  mondayOfWeek,
   normalizeIngredients,
-  rollingDays,
-  shiftMonday,
   slugify,
   storeColor,
+  weekTemplateDays,
 } from "./data.js";
 import {
   clearDayPlan,
@@ -88,7 +85,6 @@ export function createApp(root) {
     photoDraft: emptyPhotoDraft(),
     photoCache: {},
     photoViewer: null,
-    weekAnchor: mondayOfWeek(new Date()),
   };
 
   let toastTimer = 0;
@@ -419,23 +415,10 @@ export function createApp(root) {
   }
 
   function weekNavHeader() {
-    const days = weekDays();
-    const start = dateFromDayKey(days[0].key);
-    const end = dateFromDayKey(days[6].key);
     return `
       <header class="topbar week-nav">
         <p class="kicker">${FAMILY}</p>
-        <div class="week-nav-row">
-          <button class="week-nav-btn" type="button" data-week-shift="-1" aria-label="Previous week">‹</button>
-          <h1>${escapeHtml(formatWeekRange(start, end))}</h1>
-          <button class="week-nav-btn" type="button" data-week-shift="1" aria-label="Next week">›</button>
-        </div>
       </header>`;
-  }
-
-  function dateFromDayKey(key) {
-    const [year, month, day] = String(key).split("-").map(Number);
-    return new Date(year, month - 1, day);
   }
 
   function view() {
@@ -446,7 +429,7 @@ export function createApp(root) {
   }
 
   function weekDays() {
-    return rollingDays(state.weekAnchor, new Date());
+    return weekTemplateDays();
   }
 
   function weekView() {
@@ -471,7 +454,6 @@ export function createApp(root) {
                   aria-label="${escapeAttr(day.title)} actions"
                 >
                   <span class="week-grid-dow">${escapeHtml(day.compact)}</span>
-                  <span class="week-grid-date">${escapeHtml(day.dateLabel)}</span>
                 </button>
                 ${SLOTS.map((slot) => {
                   const value = slotText(plan[slot.id]);
@@ -993,7 +975,7 @@ export function createApp(root) {
                 return `<li><strong>${escapeHtml(slot.label)}</strong> ${escapeHtml(value)}</li>`;
               }).join("")}
             </ul>
-            <p class="hint">Tap a meal cell to view or change it. Clear all meals removes this date’s dinner and ${escapeHtml(day.label)}’s usual breakfast, lunch, and snack.</p>
+            <p class="hint">Tap a meal cell to view or change it. Clear all meals updates ${escapeHtml(day.label)}’s repeating breakfast, lunch, dinner, and snack.</p>
           </div>
           <div class="actions sheet-actions">
             ${
@@ -1018,10 +1000,7 @@ export function createApp(root) {
             <p class="kicker">This week</p>
             <h2 id="clear-title">Clear all meals for ${escapeHtml(day.title)}?</h2>
             <p class="hint">This will:</p>
-            <ul class="hint-list">
-              <li>Clear <strong>${escapeHtml(day.label)}’s dinner on ${escapeHtml(day.dateLabel)} only</strong></li>
-              <li>Clear the usual <strong>${escapeHtml(day.label)} breakfast, lunch, and snack</strong> for every ${escapeHtml(day.label)}</li>
-            </ul>
+            <p class="hint">This clears the usual <strong>${escapeHtml(day.label)} breakfast, lunch, dinner, and snack</strong>.</p>
           </div>
           <div class="actions sheet-actions">
             <button class="danger" type="button" data-confirm-clear>Clear meals</button>
@@ -1047,7 +1026,7 @@ export function createApp(root) {
             <div class="sheet-body">
               <p class="kicker">${escapeHtml(idea.confirmDay.title)}</p>
               <h2 id="dinner-replace-title">Replace dinner?</h2>
-              <p class="hint">This replaces <strong>${escapeHtml(current)}</strong> with <strong>${escapeHtml(meal.name)}</strong> on ${escapeHtml(idea.confirmDay.title)} only. Breakfast, lunch, and snack stay as they are.</p>
+              <p class="hint">This replaces <strong>${escapeHtml(current)}</strong> with <strong>${escapeHtml(meal.name)}</strong> on ${escapeHtml(idea.confirmDay.title)}. Breakfast, lunch, and snack stay as they are.</p>
             </div>
             <div class="actions sheet-actions">
               <button class="primary" type="button" data-confirm-dinner-assign>Replace dinner</button>
@@ -1161,15 +1140,6 @@ export function createApp(root) {
         state.ingredientDraft = "";
         clearPhotoDraft();
         go(button.dataset.tab);
-      });
-    });
-
-    root.querySelectorAll("[data-week-shift]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const weeks = Number(button.dataset.weekShift);
-        if (!weeks) return;
-        state.weekAnchor = shiftMonday(state.weekAnchor, weeks);
-        render();
       });
     });
 
@@ -1847,24 +1817,15 @@ export function createApp(root) {
   }
 
   function slotClearHint(day, slotId) {
-    if (slotId === "dinner") {
-      return `This removes dinner on ${day.title} only. Other nights stay as they are.`;
-    }
     const slotMeta = SLOTS.find((item) => item.id === slotId);
-    return `This clears the usual ${day.label} ${slotMeta.label.toLowerCase()} for every ${day.label}, not just ${day.dateLabel}.`;
+    return `This clears the usual ${day.label} ${slotMeta.label.toLowerCase()}.`;
   }
 
-  function slotSwapHint(slotId) {
-    if (slotId === "dinner") {
-      return "Same meal type only. This switches the two dates’ dinners. An empty night is fine.";
-    }
-    return "Same meal type only. This switches the usual weekday meals, so future weeks follow the new order.";
+  function slotSwapHint() {
+    return "Same meal type only. This switches the usual weekday meals.";
   }
 
   function slotAssignHint(day, slotId) {
-    if (slotId === "dinner") {
-      return `This fills dinner on ${day.title} only.`;
-    }
     const slotMeta = SLOTS.find((item) => item.id === slotId);
     return `This updates every ${day.label} ${slotMeta.label.toLowerCase()}.`;
   }
