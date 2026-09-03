@@ -228,14 +228,23 @@ function dateFromKey(key) {
   return new Date(year, month - 1, day);
 }
 
+function weekdayIdOf(day) {
+  return day?.weekdayId || day?.id || day?.key || "";
+}
+
+function seedWeekdaySlots(dayId) {
+  return {
+    breakfast: clone(SEED_PLAN[dayId].breakfast),
+    lunch: clone(SEED_PLAN[dayId].lunch),
+    snack: clone(SEED_PLAN[dayId].snack),
+    dinner: clone(SEED_PLAN[dayId].dinner),
+  };
+}
+
 function seedWeekdays() {
   const weekdays = {};
   for (const day of DAYS) {
-    weekdays[day.id] = {
-      breakfast: clone(SEED_PLAN[day.id].breakfast),
-      lunch: clone(SEED_PLAN[day.id].lunch),
-      snack: clone(SEED_PLAN[day.id].snack),
-    };
+    weekdays[day.id] = seedWeekdaySlots(day.id);
   }
   return weekdays;
 }
@@ -266,11 +275,8 @@ function collectV3Dates(saved, now) {
   return dates;
 }
 
-export function freshPlan(now = new Date()) {
-  return {
-    weekdays: seedWeekdays(),
-    dinners: seedCurrentWeekDinners(now),
-  };
+export function freshPlan() {
+  return { weekdays: seedWeekdays() };
 }
 
 export function migratePlanToV4(saved, now = new Date()) {
@@ -319,6 +325,44 @@ export function migratePlanToV4(saved, now = new Date()) {
   return { weekdays, dinners };
 }
 
+function pickWeekdayDinner(dinners, weekdayId, now) {
+  const visible = rollingDays(now);
+  const visibleDay = visible.find((item) => item.weekdayId === weekdayId);
+  if (visibleDay && dinners && Object.prototype.hasOwnProperty.call(dinners, visibleDay.key)) {
+    return normalizeSlot(dinners[visibleDay.key]) || emptySlot();
+  }
+
+  const matches = Object.entries(dinners || {})
+    .filter(([key]) => dateKey(key) && weekdayFromDateKey(key) === weekdayId)
+    .sort(([left], [right]) => left.localeCompare(right));
+  for (let i = matches.length - 1; i >= 0; i -= 1) {
+    const slot = normalizeSlot(matches[i][1]);
+    if (slotHasMeal(slot)) return slot;
+  }
+  return clone(SEED_PLAN[weekdayId].dinner);
+}
+
+export function migratePlanToV5(saved, now = new Date()) {
+  if (saved?.version === 5 && saved.weekdays && typeof saved.weekdays === "object") {
+    return normalizeV5(saved);
+  }
+
+  if (!saved) return freshPlan();
+
+  const v4 = migratePlanToV4(saved, now);
+  const weekdays = {};
+  for (const day of DAYS) {
+    const recurring = v4.weekdays?.[day.id] || emptyRecurring();
+    weekdays[day.id] = {
+      breakfast: normalizeSlot(recurring.breakfast) || emptySlot(),
+      lunch: normalizeSlot(recurring.lunch) || emptySlot(),
+      snack: normalizeSlot(recurring.snack) || emptySlot(),
+      dinner: pickWeekdayDinner(v4.dinners, day.id, now),
+    };
+  }
+  return { weekdays };
+}
+
 function normalizeV4(saved) {
   const weekdays = {};
   for (const day of DAYS) {
@@ -349,26 +393,42 @@ function normalizeV4(saved) {
   return { weekdays, dinners };
 }
 
+function normalizeV5(saved) {
+  const weekdays = {};
+  for (const day of DAYS) {
+    const raw = saved.weekdays?.[day.id];
+    if (raw && typeof raw === "object") {
+      weekdays[day.id] = {
+        breakfast: normalizeSlot(raw.breakfast) || emptySlot(),
+        lunch: normalizeSlot(raw.lunch) || emptySlot(),
+        snack: normalizeSlot(raw.snack) || emptySlot(),
+        dinner: normalizeSlot(raw.dinner) || emptySlot(),
+      };
+    } else {
+      weekdays[day.id] = seedWeekdaySlots(day.id);
+    }
+  }
+  return { weekdays };
+}
+
 export function loadPlan(now = new Date()) {
   const saved = read(KEYS.plan, null);
-  if (saved?.version === 4 && saved.weekdays && typeof saved.weekdays === "object") {
-    return normalizeV4(saved);
+  if (saved?.version === 5 && saved.weekdays && typeof saved.weekdays === "object") {
+    return normalizeV5(saved);
   }
-  const plan = migratePlanToV4(saved, now);
-  write(KEYS.plan, { version: 4, weekdays: plan.weekdays, dinners: plan.dinners });
+  const plan = migratePlanToV5(saved, now);
+  write(KEYS.plan, { version: 5, weekdays: plan.weekdays });
   return plan;
 }
 
 export function resolveDayPlan(plan, day) {
-  const weekday = plan.weekdays?.[day.weekdayId] || emptyRecurring();
-  const dinner = Object.prototype.hasOwnProperty.call(plan.dinners || {}, day.key)
-    ? plan.dinners[day.key]
-    : emptySlot();
+  const weekdayId = weekdayIdOf(day);
+  const weekday = plan.weekdays?.[weekdayId] || emptySlots();
   return {
     breakfast: clone(weekday.breakfast || emptySlot()),
     lunch: clone(weekday.lunch || emptySlot()),
     snack: clone(weekday.snack || emptySlot()),
-    dinner: clone(dinner || emptySlot()),
+    dinner: clone(weekday.dinner || emptySlot()),
   };
 }
 
@@ -388,15 +448,11 @@ export function getPlanSlot(plan, day, slotId) {
 
 export function setPlanSlot(plan, day, slotId, value) {
   const next = normalizeSlot(value) || emptySlot();
-  if (slotId === "dinner") {
-    if (!plan.dinners) plan.dinners = {};
-    plan.dinners[day.key] = next;
-    return next;
-  }
-  if (!RECURRING_SLOTS.includes(slotId)) return emptySlot();
+  const weekdayId = weekdayIdOf(day);
+  if (!weekdayId || !SLOTS.some((slot) => slot.id === slotId)) return emptySlot();
   if (!plan.weekdays) plan.weekdays = seedWeekdays();
-  if (!plan.weekdays[day.weekdayId]) plan.weekdays[day.weekdayId] = emptyRecurring();
-  plan.weekdays[day.weekdayId][slotId] = next;
+  if (!plan.weekdays[weekdayId]) plan.weekdays[weekdayId] = emptySlots();
+  plan.weekdays[weekdayId][slotId] = next;
   return next;
 }
 
@@ -409,7 +465,7 @@ export function clearDayPlan(plan, day) {
 }
 
 export function swapDaySlots(plan, fromDay, toDay, slotId) {
-  if (!fromDay || !toDay || fromDay.key === toDay.key) return plan;
+  if (!fromDay || !toDay || weekdayIdOf(fromDay) === weekdayIdOf(toDay)) return plan;
   if (!SLOTS.some((slot) => slot.id === slotId)) return plan;
   const held = clone(getPlanSlot(plan, fromDay, slotId));
   setPlanSlot(plan, fromDay, slotId, getPlanSlot(plan, toDay, slotId));
@@ -418,7 +474,7 @@ export function swapDaySlots(plan, fromDay, toDay, slotId) {
 }
 
 export function savePlan(plan) {
-  write(KEYS.plan, { version: 4, weekdays: plan.weekdays, dinners: plan.dinners });
+  write(KEYS.plan, { version: 5, weekdays: plan.weekdays });
 }
 
 function normalizeGroceryItem(item) {
