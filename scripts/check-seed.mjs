@@ -292,6 +292,29 @@ if (slotHasMeal(migrated.dinners["2026-09-07"] || emptySlot())) {
   process.exit(1);
 }
 
+const migratedFutureEmpty = migratePlanToV4(
+  {
+    version: 3,
+    dates: {
+      "2026-09-07": {
+        breakfast: { mealId: null, label: "" },
+        lunch: { mealId: "turkey-cheese-roll-up", label: "Turkey, cheese roll up" },
+        dinner: { mealId: null, label: "" },
+        snack: { mealId: null, label: "" },
+      },
+    },
+  },
+  thursday
+);
+if (migratedFutureEmpty.weekdays.monday.breakfast.mealId !== "boiled-eggs-toast") {
+  console.error("Empty next-week Monday must not wipe the seed breakfast template", migratedFutureEmpty.weekdays.monday);
+  process.exit(1);
+}
+if (migratedFutureEmpty.weekdays.monday.lunch.mealId !== "turkey-cheese-roll-up") {
+  console.error("Filled next-week Monday lunch should become the recurring template", migratedFutureEmpty.weekdays.monday);
+  process.exit(1);
+}
+
 const migratedClear = migratePlanToV4(
   {
     version: 3,

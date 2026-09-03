@@ -8,6 +8,7 @@ import {
   emptySlot,
   emptySlots,
   normalizeIngredients,
+  isInCurrentPlanWeek,
   rollingDays,
   storeKey,
   todayDayId,
@@ -168,8 +169,12 @@ function dateKey(value) {
 }
 
 function weekdayFromDateKey(key) {
+  return todayDayId(dateFromKey(key));
+}
+
+function dateFromKey(key) {
   const [year, month, day] = key.split("-").map(Number);
-  return todayDayId(new Date(year, month - 1, day));
+  return new Date(year, month - 1, day);
 }
 
 function seedWeekdays() {
@@ -190,14 +195,6 @@ function seedCurrentWeekDinners(now) {
     if (day.seedable) dinners[day.key] = clone(SEED_PLAN[day.weekdayId].dinner);
   }
   return dinners;
-}
-
-function recurringFromDay(day) {
-  return {
-    breakfast: clone(day.breakfast),
-    lunch: clone(day.lunch),
-    snack: clone(day.snack),
-  };
 }
 
 function collectV3Dates(saved, now) {
@@ -234,23 +231,28 @@ export function migratePlanToV4(saved, now = new Date()) {
 
   const dates = collectV3Dates(saved, now);
   const weekdays = seedWeekdays();
-  const latestByWeekday = {};
+  const visible = rollingDays(now);
 
-  for (const [key, day] of Object.entries(dates)) {
-    const weekdayId = weekdayFromDateKey(key);
-    if (!latestByWeekday[weekdayId] || key > latestByWeekday[weekdayId].key) {
-      latestByWeekday[weekdayId] = { key, day };
+  for (const meta of DAYS) {
+    const matches = Object.entries(dates)
+      .filter(([key]) => weekdayFromDateKey(key) === meta.id)
+      .sort(([left], [right]) => left.localeCompare(right));
+    if (!matches.length) continue;
+
+    const visibleDay = visible.find((item) => item.weekdayId === meta.id);
+    const preferred = visibleDay && dates[visibleDay.key]
+      ? [visibleDay.key, dates[visibleDay.key]]
+      : matches[matches.length - 1];
+    const [key, day] = preferred;
+
+    for (const slotId of RECURRING_SLOTS) {
+      const stored = day[slotId];
+      if (slotHasMeal(stored)) {
+        weekdays[meta.id][slotId] = clone(stored);
+      } else if (isInCurrentPlanWeek(dateFromKey(key), now)) {
+        weekdays[meta.id][slotId] = clone(stored || emptySlot());
+      }
     }
-  }
-
-  for (const day of DAYS) {
-    if (latestByWeekday[day.id]) {
-      weekdays[day.id] = recurringFromDay(latestByWeekday[day.id].day);
-    }
-  }
-
-  for (const day of rollingDays(now)) {
-    if (dates[day.key]) weekdays[day.weekdayId] = recurringFromDay(dates[day.key]);
   }
 
   const dinners = {};
