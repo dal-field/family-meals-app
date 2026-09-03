@@ -14,6 +14,7 @@
   --shadow: 0 10px 28px rgba(61, 48, 32, 0.08);
   --radius: 18px;
   --tap: 52px;
+  --nav-height: calc(72px + env(safe-area-inset-bottom, 0px));
   --font: "Avenir Next", "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   color-scheme: light;
@@ -38,7 +39,7 @@ body {
   padding:
     env(safe-area-inset-top)
     env(safe-area-inset-right)
-    calc(88px + env(safe-area-inset-bottom))
+    calc(var(--nav-height) + 8px)
     env(safe-area-inset-left);
 }
 
@@ -314,11 +315,12 @@ h2 {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 40;
+  z-index: 20;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
-  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  min-height: var(--nav-height);
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
   background: rgba(244, 239, 230, 0.94);
   border-top: 1px solid var(--line);
   backdrop-filter: blur(10px);
@@ -340,23 +342,41 @@ h2 {
 
 .sheet-backdrop {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: var(--nav-height);
   background: rgba(42, 36, 28, 0.38);
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 12px;
-  z-index: 20;
+  padding: 12px 12px 8px;
+  z-index: 40;
 }
 
 .sheet {
   width: min(560px, 100%);
-  max-height: min(88vh, 760px);
-  overflow: auto;
+  max-height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--paper);
   border-radius: 22px 22px 16px 16px;
-  padding: 18px 16px 20px;
+  padding: 18px 16px 12px;
   box-shadow: var(--shadow);
+}
+
+.sheet-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sheet-actions {
+  flex: 0 0 auto;
+  padding-top: 4px;
 }
 
 .sheet h2 {
@@ -511,7 +531,7 @@ h2 {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(96px + env(safe-area-inset-bottom));
+  bottom: calc(var(--nav-height) + 12px);
   transform: translateX(-50%);
   background: var(--sage-deep);
   color: #f7f4ea;
