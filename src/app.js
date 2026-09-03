@@ -2,14 +2,12 @@ import {
   FAMILY,
   SEED_MEALS,
   SLOTS,
-  STORE_PRESETS,
   TYPE_ORDER,
   localDateKey,
   normalizeIngredients,
   rollingDays,
   slugify,
   storeColor,
-  storeKey,
 } from "./data.js";
 import {
   clearDayPlan,
@@ -73,9 +71,9 @@ export function createApp(root) {
     editingId: null,
     form: emptyForm(),
     ingredientDraft: "",
-    groceryDraft: "",
-    groceryStore: "",
-    groceryStoreOther: "",
+    groceryItemDrafts: {},
+    storeDialog: null,
+    storeNameDraft: "",
     toast: "",
   };
 
@@ -193,6 +191,7 @@ export function createApp(root) {
       ${state.picker ? pickerSheet() : ""}
       ${state.clearConfirm ? clearConfirmSheet() : ""}
       ${state.swap ? swapSheet() : ""}
+      ${state.storeDialog ? storeDialogSheet() : ""}
       ${state.toast ? `<div class="toast" role="status">${escapeHtml(state.toast)}</div>` : ""}
     `;
 
@@ -374,114 +373,110 @@ export function createApp(root) {
   }
 
   function groceryView() {
-    const groups = groupGroceryItems(state.grocery.items);
+    const stores = state.grocery.stores || [];
     return `
-      <div class="card grocery-add">
-        <input class="search" style="margin:0" type="text" placeholder="Add an item" value="${escapeAttr(state.groceryDraft)}" data-grocery-draft />
-        <div class="grocery-add-row">
-          <select class="store-select" data-grocery-store aria-label="Store">
-            ${storeOptions(state.groceryStore)}
-          </select>
-          <button class="primary" type="button" data-add-grocery>Add</button>
-        </div>
-        ${
-          state.groceryStore === "__other"
-            ? `<input class="search" style="margin:0" type="text" placeholder="Store name" value="${escapeAttr(state.groceryStoreOther)}" data-grocery-store-other />`
-            : ""
-        }
-      </div>
       ${
-        groups.length
-          ? groups
-              .map((group) => {
-                const color = storeColor(group.store);
-                return `
-                  <section class="section">
-                    <h2 class="store-heading">
-                      <span class="store-badge" style="background:${color.bg};color:${color.fg}">${escapeHtml(group.label)}</span>
-                      <span class="hint">${group.items.length}</span>
-                    </h2>
-                    <div class="card">
-                      ${group.items.map((item) => groceryRow(item)).join("")}
-                    </div>
-                  </section>`;
-              })
-              .join("")
-          : `<p class="empty">Nothing on the list yet.</p>`
+        stores.length
+          ? stores.map((store) => groceryStoreSection(store)).join("")
+          : `<p class="empty">Add a store to start your list.</p>`
       }
+      <div class="grocery-footer">
+        <button class="ghost add-store-btn" type="button" data-open-add-store>Add store</button>
+      </div>
     `;
   }
 
-  function groceryRow(item) {
-    const color = storeColor(item.store);
+  function groceryStoreSection(store) {
+    const color = storeColor(store.name);
+    const draft = state.groceryItemDrafts[store.id] || "";
+    return `
+      <section class="section grocery-store-section">
+        <div class="store-heading">
+          <span class="store-badge" style="background:${color.bg};color:${color.fg}">${escapeHtml(store.name)}</span>
+          <span class="hint">${store.items.length}</span>
+          <span class="store-heading-actions">
+            <button class="text-btn" type="button" data-rename-store="${store.id}">Rename</button>
+            <button class="text-btn" type="button" data-delete-store="${store.id}">Delete</button>
+          </span>
+        </div>
+        <div class="card grocery-store-card">
+          ${
+            store.items.length
+              ? store.items.map((item) => groceryRow(store.id, item)).join("")
+              : `<p class="hint grocery-store-empty">No items yet.</p>`
+          }
+          <div class="store-item-add">
+            <input
+              type="text"
+              data-store-item-draft="${store.id}"
+              placeholder="Add an item"
+              value="${escapeAttr(draft)}"
+              autocomplete="off"
+            />
+            <button class="primary" type="button" data-add-store-item="${store.id}">Add</button>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  function groceryRow(storeId, item) {
     return `
       <div class="grocery-item ${item.checked ? "is-done" : ""}">
         <label class="grocery-check">
-          <input type="checkbox" ${item.checked ? "checked" : ""} data-grocery-check="${item.id}" />
+          <input type="checkbox" ${item.checked ? "checked" : ""} data-grocery-check="${storeId}:${item.id}" />
           <span>${escapeHtml(item.name)}</span>
         </label>
-        <select class="store-select store-select-row" data-grocery-retag="${item.id}" aria-label="Store for ${escapeAttr(item.name)}" style="background:${color.bg};color:${color.fg}">
-          ${storeOptions(item.store, false)}
-        </select>
-        <button class="ghost grocery-delete" type="button" data-grocery-delete="${item.id}" aria-label="Remove ${escapeAttr(item.name)}">✕</button>
+        <button class="ghost grocery-delete" type="button" data-grocery-delete="${storeId}:${item.id}" aria-label="Remove ${escapeAttr(item.name)}">✕</button>
       </div>
     `;
   }
 
-  function storeOptions(selected, includeOther = true) {
-    const extras = (state.grocery.customStores || []).filter(
-      (name) => !STORE_PRESETS.some((preset) => storeKey(preset) === storeKey(name))
-    );
-    const options = [
-      ["", "No store"],
-      ...STORE_PRESETS.map((name) => [name, name]),
-      ...extras.map((name) => [name, name]),
-    ];
-    if (selected && selected !== "__other" && !options.some(([value]) => storeKey(value) === storeKey(selected))) {
-      options.splice(1 + STORE_PRESETS.length, 0, [selected, selected]);
-    }
-    if (includeOther) options.push(["__other", "Other store…"]);
-    const selectedKey = selected === "__other" ? "__other" : storeKey(selected);
-    return options
-      .map(([value, label]) => {
-        const isOn =
-          value === "__other"
-            ? selected === "__other"
-            : storeKey(value) === selectedKey && selected !== "__other";
-        return `<option value="${escapeAttr(value)}" ${isOn ? "selected" : ""}>${escapeHtml(label)}</option>`;
-      })
-      .join("");
-  }
+  function storeDialogSheet() {
+    const dialog = state.storeDialog;
+    if (!dialog) return "";
+    const store = dialog.storeId ? findGroceryStore(dialog.storeId) : null;
 
-  function groupGroceryItems(items) {
-    const buckets = new Map();
-    for (const item of items) {
-      const key = storeKey(item.store) || "__none";
-      if (!buckets.has(key)) buckets.set(key, []);
-      buckets.get(key).push(item);
+    if (dialog.type === "delete" && store) {
+      return `
+        <div class="sheet-backdrop" data-close-store-dialog>
+          <aside class="sheet sheet-confirm" role="dialog" aria-modal="true" aria-labelledby="store-delete-title">
+            <div class="sheet-body">
+              <p class="kicker">Groceries</p>
+              <h2 id="store-delete-title">Delete ${escapeHtml(store.name)}?</h2>
+              <p class="hint">This removes the store and its ${store.items.length} item${store.items.length === 1 ? "" : "s"}.</p>
+            </div>
+            <div class="actions sheet-actions">
+              <button class="danger" type="button" data-confirm-delete-store="${store.id}">Delete store</button>
+              <button class="ghost" type="button" data-close-store-dialog>Cancel</button>
+            </div>
+          </aside>
+        </div>
+      `;
     }
 
-    const groups = [];
-    for (const preset of STORE_PRESETS) {
-      const key = storeKey(preset);
-      if (buckets.has(key)) {
-        groups.push({ store: preset, label: preset, items: buckets.get(key) });
-        buckets.delete(key);
-      }
-    }
+    const title =
+      dialog.type === "add" ? "Add store" : dialog.type === "rename" ? `Rename ${store?.name || "store"}` : "";
+    const submitLabel = dialog.type === "add" ? "Save store" : "Save name";
 
-    const custom = [...buckets.keys()]
-      .filter((key) => key !== "__none")
-      .sort((a, b) => a.localeCompare(b));
-    for (const key of custom) {
-      const itemsIn = buckets.get(key);
-      groups.push({ store: itemsIn[0].store, label: itemsIn[0].store, items: itemsIn });
-    }
-
-    if (buckets.has("__none")) {
-      groups.push({ store: "", label: "No store", items: buckets.get("__none") });
-    }
-    return groups;
+    return `
+      <div class="sheet-backdrop" data-close-store-dialog>
+        <aside class="sheet sheet-confirm" role="dialog" aria-modal="true" aria-labelledby="store-dialog-title">
+          <div class="sheet-body">
+            <p class="kicker">Groceries</p>
+            <h2 id="store-dialog-title">${escapeHtml(title)}</h2>
+            <label class="store-name-field">
+              Store name
+              <input type="text" data-store-name-draft value="${escapeAttr(state.storeNameDraft)}" placeholder="e.g. Costco" autocomplete="off" />
+            </label>
+          </div>
+          <div class="actions sheet-actions">
+            <button class="primary" type="button" data-submit-store-dialog>${submitLabel}</button>
+            <button class="ghost" type="button" data-close-store-dialog>Cancel</button>
+          </div>
+        </aside>
+      </div>
+    `;
   }
 
   function addView() {
@@ -847,7 +842,7 @@ export function createApp(root) {
 
     root.querySelectorAll("[data-grocery-check]").forEach((input) => {
       input.addEventListener("change", () => {
-        const item = state.grocery.items.find((row) => row.id === input.dataset.groceryCheck);
+        const item = findGroceryItem(input.dataset.groceryCheck);
         if (item) item.checked = input.checked;
         saveGrocery(state.grocery);
         render();
@@ -856,59 +851,102 @@ export function createApp(root) {
 
     root.querySelectorAll("[data-grocery-delete]").forEach((button) => {
       button.addEventListener("click", () => {
-        state.grocery.items = state.grocery.items.filter((row) => row.id !== button.dataset.groceryDelete);
+        deleteGroceryItem(button.dataset.groceryDelete);
         saveGrocery(state.grocery);
         render();
       });
     });
 
-    root.querySelectorAll("[data-grocery-retag]").forEach((select) => {
-      select.addEventListener("change", () => {
-        const item = state.grocery.items.find((row) => row.id === select.dataset.groceryRetag);
-        if (!item) return;
-        item.store = select.value;
-        rememberCustomStore(item.store);
-        saveGrocery(state.grocery);
-        render();
+    root.querySelectorAll("[data-store-item-draft]").forEach((input) => {
+      input.addEventListener("input", () => {
+        state.groceryItemDrafts[input.dataset.storeItemDraft] = input.value;
       });
-    });
-
-    const groceryDraft = root.querySelector("[data-grocery-draft]");
-    if (groceryDraft) {
-      groceryDraft.addEventListener("input", () => {
-        state.groceryDraft = groceryDraft.value;
-      });
-    }
-
-    const groceryStore = root.querySelector("[data-grocery-store]");
-    if (groceryStore) {
-      groceryStore.addEventListener("change", () => {
-        state.groceryStore = groceryStore.value;
-        render();
-        const next = root.querySelector(state.groceryStore === "__other" ? "[data-grocery-store-other]" : "[data-grocery-draft]");
-        if (next) next.focus();
-      });
-    }
-
-    const groceryStoreOther = root.querySelector("[data-grocery-store-other]");
-    if (groceryStoreOther) {
-      groceryStoreOther.addEventListener("input", () => {
-        state.groceryStoreOther = groceryStoreOther.value;
-      });
-    }
-
-    const addGrocery = root.querySelector("[data-add-grocery]");
-    if (addGrocery) {
-      addGrocery.addEventListener("click", () => addGroceryItem());
-    }
-    if (groceryDraft) {
-      groceryDraft.addEventListener("keydown", (event) => {
+      input.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
-          addGroceryItem();
+          addItemToStore(input.dataset.storeItemDraft);
+        }
+      });
+    });
+
+    root.querySelectorAll("[data-add-store-item]").forEach((button) => {
+      button.addEventListener("click", () => addItemToStore(button.dataset.addStoreItem));
+    });
+
+    root.querySelectorAll("[data-open-add-store]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.storeDialog = { type: "add" };
+        state.storeNameDraft = "";
+        render();
+        focusStoreNameDraft();
+      });
+    });
+
+    root.querySelectorAll("[data-rename-store]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const store = findGroceryStore(button.dataset.renameStore);
+        if (!store) return;
+        state.storeDialog = { type: "rename", storeId: store.id };
+        state.storeNameDraft = store.name;
+        render();
+        focusStoreNameDraft();
+      });
+    });
+
+    root.querySelectorAll("[data-delete-store]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const store = findGroceryStore(button.dataset.deleteStore);
+        if (!store) return;
+        if (store.items.length) {
+          state.storeDialog = { type: "delete", storeId: store.id };
+          render();
+          return;
+        }
+        removeGroceryStore(store.id);
+        saveGrocery(state.grocery);
+        toast(`Removed ${store.name}`);
+        render();
+      });
+    });
+
+    root.querySelectorAll("[data-close-store-dialog]").forEach((node) => {
+      node.addEventListener("click", (event) => {
+        if (node.classList.contains("sheet-backdrop") && event.target !== node) return;
+        state.storeDialog = null;
+        state.storeNameDraft = "";
+        render();
+      });
+    });
+
+    const submitStoreDialog = root.querySelector("[data-submit-store-dialog]");
+    if (submitStoreDialog) {
+      submitStoreDialog.addEventListener("click", () => submitStoreDialogForm());
+    }
+
+    const storeNameDraft = root.querySelector("[data-store-name-draft]");
+    if (storeNameDraft) {
+      storeNameDraft.addEventListener("input", () => {
+        state.storeNameDraft = storeNameDraft.value;
+      });
+      storeNameDraft.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          submitStoreDialogForm();
         }
       });
     }
+
+    root.querySelectorAll("[data-confirm-delete-store]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const store = findGroceryStore(button.dataset.confirmDeleteStore);
+        if (!store) return;
+        removeGroceryStore(store.id);
+        saveGrocery(state.grocery);
+        state.storeDialog = null;
+        toast(`Removed ${store.name}`);
+        render();
+      });
+    });
 
     const form = root.querySelector("[data-meal-form]");
     if (form) {
@@ -1122,49 +1160,129 @@ export function createApp(root) {
     if (next) next.focus();
   }
 
+  function findGroceryStore(storeId) {
+    return state.grocery.stores.find((store) => store.id === storeId) || null;
+  }
+
+  function findGroceryItem(ref) {
+    const [storeId, itemId] = String(ref || "").split(":");
+    const store = findGroceryStore(storeId);
+    if (!store) return null;
+    return store.items.find((item) => item.id === itemId) || null;
+  }
+
+  function groceryStoreNameTaken(name, exceptId = null) {
+    const key = name.trim().toLowerCase();
+    return state.grocery.stores.some(
+      (store) => store.id !== exceptId && store.name.trim().toLowerCase() === key
+    );
+  }
+
+  function addGroceryStore(name) {
+    const trimmed = name.trim();
+    if (!trimmed || groceryStoreNameTaken(trimmed)) return null;
+    const store = { id: `s-${Date.now()}`, name: trimmed, items: [] };
+    state.grocery.stores.push(store);
+    return store;
+  }
+
+  function removeGroceryStore(storeId) {
+    state.grocery.stores = state.grocery.stores.filter((store) => store.id !== storeId);
+    delete state.groceryItemDrafts[storeId];
+  }
+
+  function addItemToStore(storeId) {
+    const store = findGroceryStore(storeId);
+    if (!store) return;
+    const name = (state.groceryItemDrafts[storeId] || "").trim();
+    if (!name) return;
+    const exists = store.items.some((item) => item.name.trim().toLowerCase() === name.toLowerCase());
+    if (!exists) {
+      store.items.push({
+        id: `g-${Date.now()}`,
+        name,
+        checked: false,
+      });
+      saveGrocery(state.grocery);
+    }
+    state.groceryItemDrafts[storeId] = "";
+    render();
+    const next = root.querySelector(`[data-store-item-draft="${storeId}"]`);
+    if (next) next.focus();
+  }
+
+  function deleteGroceryItem(ref) {
+    const [storeId, itemId] = String(ref || "").split(":");
+    const store = findGroceryStore(storeId);
+    if (!store) return;
+    store.items = store.items.filter((item) => item.id !== itemId);
+  }
+
+  function focusStoreNameDraft() {
+    const next = root.querySelector("[data-store-name-draft]");
+    if (next) {
+      next.focus();
+      next.setSelectionRange(state.storeNameDraft.length, state.storeNameDraft.length);
+    }
+  }
+
+  function submitStoreDialogForm() {
+    const name = state.storeNameDraft.trim();
+    if (!name || !state.storeDialog) return;
+
+    if (state.storeDialog.type === "add") {
+      if (groceryStoreNameTaken(name)) {
+        toast("You already have a store with that name");
+        return;
+      }
+      addGroceryStore(name);
+      saveGrocery(state.grocery);
+      state.storeDialog = null;
+      state.storeNameDraft = "";
+      toast(`Added ${name}`);
+      render();
+      return;
+    }
+
+    if (state.storeDialog.type === "rename") {
+      const store = findGroceryStore(state.storeDialog.storeId);
+      if (!store) return;
+      if (groceryStoreNameTaken(name, store.id)) {
+        toast("You already have a store with that name");
+        return;
+      }
+      store.name = name;
+      saveGrocery(state.grocery);
+      state.storeDialog = null;
+      state.storeNameDraft = "";
+      toast("Store renamed");
+      render();
+    }
+  }
+
+  function targetStoreForMealIngredients() {
+    if (state.grocery.stores.length) return state.grocery.stores[0];
+    return addGroceryStore("To buy");
+  }
+
   function addMealIngredientsToGrocery(meal) {
-    const existing = new Set(state.grocery.items.map((item) => item.name.trim().toLowerCase()));
+    const store = targetStoreForMealIngredients();
+    if (!store) return 0;
+    const existing = new Set(store.items.map((item) => item.name.trim().toLowerCase()));
     let added = 0;
     for (const name of normalizeIngredients(meal.ingredients)) {
       const key = name.toLowerCase();
       if (existing.has(key)) continue;
-      state.grocery.items.push({
+      store.items.push({
         id: `g-${Date.now()}-${added}`,
         name,
         checked: false,
-        store: "",
       });
       existing.add(key);
       added += 1;
     }
     if (added) saveGrocery(state.grocery);
     return added;
-  }
-
-  function addGroceryItem() {
-    const name = state.groceryDraft.trim();
-    if (!name) return;
-    let store = state.groceryStore;
-    if (store === "__other") store = state.groceryStoreOther.trim();
-    rememberCustomStore(store);
-    state.grocery.items.push({
-      id: `g-${Date.now()}`,
-      name,
-      checked: false,
-      store,
-    });
-    state.groceryDraft = "";
-    state.groceryStoreOther = "";
-    saveGrocery(state.grocery);
-    render();
-  }
-
-  function rememberCustomStore(store) {
-    const name = (store || "").trim();
-    if (!name) return;
-    if (STORE_PRESETS.some((preset) => storeKey(preset) === storeKey(name))) return;
-    if (state.grocery.customStores.some((item) => storeKey(item) === storeKey(name))) return;
-    state.grocery.customStores.push(name);
   }
 
   function uniqueId(name) {

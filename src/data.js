@@ -477,13 +477,12 @@ export function rollingDays(now = new Date()) {
   return days;
 }
 
-export const STORE_PRESETS = ["Costco", "Walmart", "Target", "Smith's"];
-
 const STORE_COLORS = {
   costco: { bg: "#d6e6f7", fg: "#1d4d86" },
   walmart: { bg: "#d4efe4", fg: "#0b5c3c" },
   target: { bg: "#f8d6dc", fg: "#9a1c30" },
   "smith's": { bg: "#e5dcf6", fg: "#4a2a7a" },
+  aldi: { bg: "#f4e3c0", fg: "#7a4a0c" },
 };
 
 const STORE_FALLBACK = [
