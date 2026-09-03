@@ -51,6 +51,18 @@ select {
   color: inherit;
 }
 
+input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  max-width: 22px;
+  max-height: 22px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--sage);
+}
+
 button {
   cursor: pointer;
 }
@@ -371,6 +383,7 @@ h2 {
   min-height: 0;
   flex: 1 1 auto;
   overflow: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -405,6 +418,24 @@ h2 {
   min-height: var(--tap);
 }
 
+.form input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  max-width: 22px;
+  max-height: 22px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 22px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  accent-color: var(--sage);
+  appearance: auto;
+  -webkit-appearance: checkbox;
+}
+
 .form textarea {
   min-height: 96px;
   resize: vertical;
@@ -417,23 +448,26 @@ h2 {
 }
 
 .type-picks label {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
+  width: auto;
   min-height: 44px;
-  padding: 0 12px;
+  padding: 8px 12px;
   border: 1px solid var(--line);
   border-radius: 999px;
   font-weight: 650;
   background: #fffdf8;
+  white-space: nowrap;
 }
 
+.form label.check-row,
 .check-row {
   display: flex;
   align-items: center;
   gap: 12px;
   min-height: var(--tap);
-  padding: 0 4px;
+  padding: 8px 4px;
   font-weight: 650;
 }
 
