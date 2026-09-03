@@ -25,6 +25,8 @@ import {
   savePlan,
   saveSeedEdit,
   saveUserMeal,
+  slotHasMeal,
+  swapDaySlots,
 } from "./storage.js";
 
 const TYPE_LABEL = {
@@ -65,6 +67,7 @@ export function createApp(root) {
     picker: null,
     expandedDay: localDateKey(new Date()),
     clearConfirm: null,
+    swap: null,
     pickerQuery: "",
     oneOff: "",
     editingId: null,
@@ -189,6 +192,7 @@ export function createApp(root) {
       ${state.selectedId ? mealSheet() : ""}
       ${state.picker ? pickerSheet() : ""}
       ${state.clearConfirm ? clearConfirmSheet() : ""}
+      ${state.swap ? swapSheet() : ""}
       ${state.toast ? `<div class="toast" role="status">${escapeHtml(state.toast)}</div>` : ""}
     `;
 
@@ -278,16 +282,30 @@ export function createApp(root) {
             ? `<div class="slots">
           ${SLOTS.map((slot) => {
             const value = slotText(plan[slot.id]);
+            const canSwap = slotHasMeal(plan[slot.id]);
             return `
-              <button
-                class="slot-btn ${slot.id === "dinner" ? "is-dinner" : ""} ${value ? "" : "is-empty"}"
-                type="button"
-                data-day="${day.key}"
-                data-slot="${slot.id}"
-              >
-                <span class="kind">${slot.label}</span>
-                <span class="value">${escapeHtml(value || "Tap to add")}</span>
-              </button>`;
+              <div class="slot-row">
+                <button
+                  class="slot-btn ${slot.id === "dinner" ? "is-dinner" : ""} ${value ? "" : "is-empty"}"
+                  type="button"
+                  data-day="${day.key}"
+                  data-slot="${slot.id}"
+                >
+                  <span class="kind">${slot.label}</span>
+                  <span class="value">${escapeHtml(value || "Tap to add")}</span>
+                </button>
+                ${
+                  canSwap
+                    ? `<button
+                        class="slot-swap"
+                        type="button"
+                        data-swap-from="${day.key}"
+                        data-swap-slot="${slot.id}"
+                        aria-label="Swap ${day.label} ${slot.label.toLowerCase()}"
+                      >${swapIcon()}</button>`
+                    : ""
+                }
+              </div>`;
           }).join("")}
           ${
             canClear
@@ -595,6 +613,49 @@ export function createApp(root) {
     `;
   }
 
+  function swapIcon() {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 7h13l-3.2-3.2" />
+        <path d="M20 17H7l3.2 3.2" />
+      </svg>`;
+  }
+
+  function swapSheet() {
+    const { day, slot } = state.swap;
+    if (!day || !slot) return "";
+    const slotMeta = SLOTS.find((item) => item.id === slot);
+    const others = weekDays().filter((item) => item.key !== day.key);
+    return `
+      <div class="sheet-backdrop" data-close-swap>
+        <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="swap-title">
+          <div class="sheet-body">
+            <p class="kicker">${escapeHtml(day.title)}</p>
+            <h2 id="swap-title">Swap ${escapeHtml(day.label)} ${escapeHtml(slotMeta.label.toLowerCase())} with…</h2>
+            <p class="hint">Same meal type only. An empty day is fine — the meal will move there.</p>
+            <div class="meal-list">
+              ${others
+                .map((other) => {
+                  const text = slotText(resolveDayPlan(state.plan, other)[slot]) || "empty";
+                  return `
+                    <button class="meal-row" type="button" data-swap-target="${other.key}">
+                      <span class="meal-main">
+                        <span class="meal-name">${escapeHtml(other.title)}</span>
+                        <span class="meal-meta">${escapeHtml(text)}</span>
+                      </span>
+                    </button>`;
+                })
+                .join("")}
+            </div>
+          </div>
+          <div class="actions sheet-actions">
+            <button class="ghost" type="button" data-close-swap>Cancel</button>
+          </div>
+        </aside>
+      </div>
+    `;
+  }
+
   function clearConfirmSheet() {
     const day = state.clearConfirm;
     if (!day) return "";
@@ -717,6 +778,40 @@ export function createApp(root) {
         render();
       });
     }
+
+    root.querySelectorAll("[data-swap-from]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const day = weekDays().find((item) => item.key === button.dataset.swapFrom);
+        const slot = button.dataset.swapSlot;
+        if (!day || !slot) return;
+        const current = resolveDayPlan(state.plan, day)[slot];
+        if (!slotHasMeal(current)) return;
+        state.swap = { day, slot };
+        render();
+      });
+    });
+
+    root.querySelectorAll("[data-close-swap]").forEach((node) => {
+      node.addEventListener("click", (event) => {
+        if (node.classList.contains("sheet-backdrop") && event.target !== node) return;
+        state.swap = null;
+        render();
+      });
+    });
+
+    root.querySelectorAll("[data-swap-target]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (!state.swap) return;
+        const target = weekDays().find((item) => item.key === button.dataset.swapTarget);
+        if (!target || target.key === state.swap.day.key) return;
+        swapDaySlots(state.plan, state.swap.day, target, state.swap.slot);
+        savePlan(state.plan);
+        const slotMeta = SLOTS.find((item) => item.id === state.swap.slot);
+        toast(`Swapped ${slotMeta.label.toLowerCase()}`);
+        state.swap = null;
+        render();
+      });
+    });
 
     root.querySelectorAll("[data-open-meal]").forEach((button) => {
       button.addEventListener("click", () => go(`meals/${button.dataset.openMeal}`));

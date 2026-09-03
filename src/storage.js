@@ -198,6 +198,17 @@ export function ensureDayPlan(plan, day) {
   return plan.dates[day.key];
 }
 
+export function swapDaySlots(plan, fromDay, toDay, slotId) {
+  if (!fromDay || !toDay || fromDay.key === toDay.key) return plan;
+  if (!SLOTS.some((slot) => slot.id === slotId)) return plan;
+  const from = ensureDayPlan(plan, fromDay);
+  const to = ensureDayPlan(plan, toDay);
+  const held = clone(from[slotId]);
+  from[slotId] = clone(to[slotId]);
+  to[slotId] = held;
+  return plan;
+}
+
 export function savePlan(plan) {
   write(KEYS.plan, { version: 3, dates: plan.dates });
 }
