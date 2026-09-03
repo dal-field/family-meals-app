@@ -1,4 +1,4 @@
-import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS } from "../src/data.js";
+import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, daysStartingToday } from "../src/data.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
 const required = [
@@ -105,6 +105,13 @@ if (SEED_MIDWEEK.map((item) => item.name).join("|") !== "Salad kit|Chicken (Th, 
 
 if (new Set(SEED_MEALS.map((meal) => meal.id)).size !== SEED_MEALS.length) {
   console.error("Duplicate meal ids");
+  process.exit(1);
+}
+
+const thursday = new Date("2026-09-03T12:00:00");
+const rotated = daysStartingToday(thursday).map((day) => day.id);
+if (rotated.join(",") !== "thursday,friday,saturday,sunday,monday,tuesday,wednesday") {
+  console.error("Week rotation mismatch", rotated);
   process.exit(1);
 }
 

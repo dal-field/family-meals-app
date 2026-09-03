@@ -20,10 +20,10 @@ No accounts. No backend. Changes stay on the device in `localStorage` and are me
 
 ## What a parent can do
 
-- **This Week** — breakfast, lunch, dinner, and snack for all 7 days. Tonight’s dinner is at the top. Tap any slot to pick a library meal or type a one-off.
+- **This Week** — today is first, then the next 6 days. Only today starts expanded. Tonight’s dinner is at the top. Tap any slot to pick a library meal or type a one-off.
 - **Meals** — searchable library, filter by Breakfast / Lunch / Dinner / Snack / Make-ahead. Open a meal for notes and recipe links (links open in a new tab).
 - **Add** — save a new meal (name, types, notes, recipe URL, ingredients, make-ahead). Edit later. Delete meals you added; hide a baked-in seed meal if you do not want it in the list.
-- **Groceries** — midweek buy list (salad kit, chicken for Thu/Sun, cantaloupe) plus a simple extra list you can check off and add to.
+- **Groceries** — a simple list you can add to, check off, and delete. Tag items with a store (Costco, Walmart, and others) so the list groups by store.
 
 Install from the browser (“Add to Home Screen”) for a full-screen PWA. After the first visit it works offline.
 
@@ -42,7 +42,6 @@ It shows up under **Meals** right away and is still there after refresh.
 - The weekly plan (Mon–Sun, all four slots, including empty Saturday/Sunday snacks).
 - Dinner ideas (one meal each; shared names such as Spaghetti, Burritos, Beef stroganoff, and Chicken pillows are a single meal used in both the plan and the library).
 - Make-ahead breakfasts: Burritos, Sandwiches, Boiled eggs & smoothies, Crepes.
-- Midweek buy: Salad kit, Chicken (Th, Sun), Cantaloupe.
 - Recipe URLs for Taquitos and Chicken Alfredo.
 
 ## Local development

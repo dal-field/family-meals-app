@@ -1,4 +1,16 @@
-import { DAYS, FAMILY, SEED_MEALS, SLOTS, TYPE_ORDER, slugify, todayDayId } from "./data.js";
+import {
+  DAYS,
+  FAMILY,
+  SEED_MEALS,
+  SLOTS,
+  STORE_PRESETS,
+  TYPE_ORDER,
+  daysStartingToday,
+  slugify,
+  storeColor,
+  storeKey,
+  todayDayId,
+} from "./data.js";
 import {
   deleteUserMeal,
   hideSeedMeal,
@@ -53,6 +65,8 @@ export function createApp(root) {
     editingId: null,
     form: emptyForm(),
     groceryDraft: "",
+    groceryStore: "",
+    groceryStoreOther: "",
     toast: "",
   };
 
@@ -200,7 +214,7 @@ export function createApp(root) {
       </section>
 
       <div class="week-list">
-        ${DAYS.map((day) => dayCard(day, today)).join("")}
+        ${daysStartingToday().map((day) => dayCard(day, today)).join("")}
       </div>
 
       <section class="section">
@@ -321,41 +335,115 @@ export function createApp(root) {
   }
 
   function groceryView() {
+    const groups = groupGroceryItems(state.grocery.items);
     return `
-      <section class="card">
-        <div class="prep-card">
-          <h2>Midweek buy</h2>
-          <p class="hint">From the family food list. Checks stay on this phone.</p>
-        </div>
-        ${state.grocery.midweek.map((item) => groceryRow(item, "midweek")).join("")}
-      </section>
-      <section class="section">
-        <div class="card">
-          <div class="prep-card">
-            <h2>Grocery list</h2>
-            <p class="hint">Add anything else you need this week.</p>
-          </div>
-          ${
-            state.grocery.extras.length
-              ? state.grocery.extras.map((item) => groceryRow(item, "extras")).join("")
-              : `<p class="empty" style="padding: 0 16px 16px">Nothing extra yet.</p>`
-          }
-        </div>
-        <div class="add-row">
-          <input class="search" style="margin:0" type="text" placeholder="Add an item" value="${escapeAttr(state.groceryDraft)}" data-grocery-draft />
+      <p class="hint">Add what you need and tag a store if you want. The list groups by store and stays on this phone.</p>
+      <div class="card grocery-add">
+        <input class="search" style="margin:0" type="text" placeholder="Add an item" value="${escapeAttr(state.groceryDraft)}" data-grocery-draft />
+        <div class="grocery-add-row">
+          <select class="store-select" data-grocery-store aria-label="Store">
+            ${storeOptions(state.groceryStore)}
+          </select>
           <button class="primary" type="button" data-add-grocery>Add</button>
         </div>
-      </section>
+        ${
+          state.groceryStore === "__other"
+            ? `<input class="search" style="margin:0" type="text" placeholder="Store name" value="${escapeAttr(state.groceryStoreOther)}" data-grocery-store-other />`
+            : ""
+        }
+      </div>
+      ${
+        groups.length
+          ? groups
+              .map((group) => {
+                const color = storeColor(group.store);
+                return `
+                  <section class="section">
+                    <h2 class="store-heading">
+                      <span class="store-badge" style="background:${color.bg};color:${color.fg}">${escapeHtml(group.label)}</span>
+                      <span class="hint">${group.items.length}</span>
+                    </h2>
+                    <div class="card">
+                      ${group.items.map((item) => groceryRow(item)).join("")}
+                    </div>
+                  </section>`;
+              })
+              .join("")
+          : `<p class="empty">Nothing on the list yet.</p>`
+      }
     `;
   }
 
-  function groceryRow(item, list) {
+  function groceryRow(item) {
+    const color = storeColor(item.store);
     return `
-      <label class="grocery-item ${item.checked ? "is-done" : ""}">
-        <input type="checkbox" ${item.checked ? "checked" : ""} data-grocery-check="${list}:${item.id}" />
-        <span>${escapeHtml(item.name)}</span>
-      </label>
+      <div class="grocery-item ${item.checked ? "is-done" : ""}">
+        <label class="grocery-check">
+          <input type="checkbox" ${item.checked ? "checked" : ""} data-grocery-check="${item.id}" />
+          <span>${escapeHtml(item.name)}</span>
+        </label>
+        <select class="store-select store-select-row" data-grocery-retag="${item.id}" aria-label="Store for ${escapeAttr(item.name)}" style="background:${color.bg};color:${color.fg}">
+          ${storeOptions(item.store, false)}
+        </select>
+        <button class="ghost grocery-delete" type="button" data-grocery-delete="${item.id}" aria-label="Remove ${escapeAttr(item.name)}">✕</button>
+      </div>
     `;
+  }
+
+  function storeOptions(selected, includeOther = true) {
+    const extras = (state.grocery.customStores || []).filter(
+      (name) => !STORE_PRESETS.some((preset) => storeKey(preset) === storeKey(name))
+    );
+    const options = [
+      ["", "No store"],
+      ...STORE_PRESETS.map((name) => [name, name]),
+      ...extras.map((name) => [name, name]),
+    ];
+    if (selected && selected !== "__other" && !options.some(([value]) => storeKey(value) === storeKey(selected))) {
+      options.splice(1 + STORE_PRESETS.length, 0, [selected, selected]);
+    }
+    if (includeOther) options.push(["__other", "Other store…"]);
+    const selectedKey = selected === "__other" ? "__other" : storeKey(selected);
+    return options
+      .map(([value, label]) => {
+        const isOn =
+          value === "__other"
+            ? selected === "__other"
+            : storeKey(value) === selectedKey && selected !== "__other";
+        return `<option value="${escapeAttr(value)}" ${isOn ? "selected" : ""}>${escapeHtml(label)}</option>`;
+      })
+      .join("");
+  }
+
+  function groupGroceryItems(items) {
+    const buckets = new Map();
+    for (const item of items) {
+      const key = storeKey(item.store) || "__none";
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(item);
+    }
+
+    const groups = [];
+    for (const preset of STORE_PRESETS) {
+      const key = storeKey(preset);
+      if (buckets.has(key)) {
+        groups.push({ store: preset, label: preset, items: buckets.get(key) });
+        buckets.delete(key);
+      }
+    }
+
+    const custom = [...buckets.keys()]
+      .filter((key) => key !== "__none")
+      .sort((a, b) => a.localeCompare(b));
+    for (const key of custom) {
+      const itemsIn = buckets.get(key);
+      groups.push({ store: itemsIn[0].store, label: itemsIn[0].store, items: itemsIn });
+    }
+
+    if (buckets.has("__none")) {
+      groups.push({ store: "", label: "No store", items: buckets.get("__none") });
+    }
+    return groups;
   }
 
   function addView() {
@@ -556,9 +644,27 @@ export function createApp(root) {
 
     root.querySelectorAll("[data-grocery-check]").forEach((input) => {
       input.addEventListener("change", () => {
-        const [list, id] = input.dataset.groceryCheck.split(":");
-        const item = state.grocery[list].find((row) => row.id === id);
+        const item = state.grocery.items.find((row) => row.id === input.dataset.groceryCheck);
         if (item) item.checked = input.checked;
+        saveGrocery(state.grocery);
+        render();
+      });
+    });
+
+    root.querySelectorAll("[data-grocery-delete]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.grocery.items = state.grocery.items.filter((row) => row.id !== button.dataset.groceryDelete);
+        saveGrocery(state.grocery);
+        render();
+      });
+    });
+
+    root.querySelectorAll("[data-grocery-retag]").forEach((select) => {
+      select.addEventListener("change", () => {
+        const item = state.grocery.items.find((row) => row.id === select.dataset.groceryRetag);
+        if (!item) return;
+        item.store = select.value;
+        rememberCustomStore(item.store);
         saveGrocery(state.grocery);
         render();
       });
@@ -568,6 +674,23 @@ export function createApp(root) {
     if (groceryDraft) {
       groceryDraft.addEventListener("input", () => {
         state.groceryDraft = groceryDraft.value;
+      });
+    }
+
+    const groceryStore = root.querySelector("[data-grocery-store]");
+    if (groceryStore) {
+      groceryStore.addEventListener("change", () => {
+        state.groceryStore = groceryStore.value;
+        render();
+        const next = root.querySelector(state.groceryStore === "__other" ? "[data-grocery-store-other]" : "[data-grocery-draft]");
+        if (next) next.focus();
+      });
+    }
+
+    const groceryStoreOther = root.querySelector("[data-grocery-store-other]");
+    if (groceryStoreOther) {
+      groceryStoreOther.addEventListener("input", () => {
+        state.groceryStoreOther = groceryStoreOther.value;
       });
     }
 
@@ -733,15 +856,27 @@ export function createApp(root) {
   function addGroceryItem() {
     const name = state.groceryDraft.trim();
     if (!name) return;
-    state.grocery.extras.push({
+    let store = state.groceryStore;
+    if (store === "__other") store = state.groceryStoreOther.trim();
+    rememberCustomStore(store);
+    state.grocery.items.push({
       id: `g-${Date.now()}`,
       name,
       checked: false,
-      seed: false,
+      store,
     });
     state.groceryDraft = "";
+    state.groceryStoreOther = "";
     saveGrocery(state.grocery);
     render();
+  }
+
+  function rememberCustomStore(store) {
+    const name = (store || "").trim();
+    if (!name) return;
+    if (STORE_PRESETS.some((preset) => storeKey(preset) === storeKey(name))) return;
+    if (state.grocery.customStores.some((item) => storeKey(item) === storeKey(name))) return;
+    state.grocery.customStores.push(name);
   }
 
   function uniqueId(name) {
