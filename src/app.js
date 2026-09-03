@@ -367,7 +367,7 @@ export function createApp(root) {
         </label>
         <label>
           Recipe URL
-          <input name="recipeUrl" type="url" inputmode="url" placeholder="https://" value="${escapeAttr(form.recipeUrl)}" />
+          <input name="recipeUrl" type="text" inputmode="url" autocomplete="off" placeholder="https://" value="${escapeAttr(form.recipeUrl)}" />
         </label>
         <label>
           Ingredients
@@ -443,7 +443,18 @@ export function createApp(root) {
           <h2>Change ${slotMeta.label.toLowerCase()}</h2>
           ${current ? `<p class="hint">Now: ${escapeHtml(current)}</p>` : ""}
           <input class="search" type="search" placeholder="Search the library" value="${escapeAttr(state.pickerQuery)}" data-picker-search />
-          <div class="meal-list">
+          <form class="form" data-one-off>
+            <label>
+              Or type a one-off
+              <input name="oneOff" value="${escapeAttr(state.oneOff)}" placeholder="Something simple for tonight" />
+            </label>
+            <div class="actions">
+              <button class="primary" type="submit">Use this</button>
+              <button class="ghost" type="button" data-clear-slot>Clear slot</button>
+              <button class="ghost" type="button" data-close-picker>Cancel</button>
+            </div>
+          </form>
+          <div class="meal-list" style="margin-top:16px">
             ${meals
               .slice(0, 40)
               .map(
@@ -457,17 +468,6 @@ export function createApp(root) {
               )
               .join("")}
           </div>
-          <form class="form" data-one-off style="margin-top:16px">
-            <label>
-              Or type a one-off
-              <input name="oneOff" value="${escapeAttr(state.oneOff)}" placeholder="Something simple for tonight" />
-            </label>
-            <div class="actions">
-              <button class="primary" type="submit">Use this</button>
-              <button class="ghost" type="button" data-clear-slot>Clear slot</button>
-              <button class="ghost" type="button" data-close-picker>Cancel</button>
-            </div>
-          </form>
         </aside>
       </div>
     `;
@@ -663,6 +663,12 @@ export function createApp(root) {
 
     const oneOff = root.querySelector("[data-one-off]");
     if (oneOff) {
+      const oneOffInput = oneOff.querySelector('[name="oneOff"]');
+      if (oneOffInput) {
+        oneOffInput.addEventListener("input", () => {
+          state.oneOff = oneOffInput.value;
+        });
+      }
       oneOff.addEventListener("submit", (event) => {
         event.preventDefault();
         const value = String(new FormData(oneOff).get("oneOff") || "").trim();
