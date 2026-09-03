@@ -1,4 +1,4 @@
-import { DAYS, SEED_MEALS, SEED_PLAN, SLOTS, emptySlots, normalizeIngredients, rollingDays } from "./data.js";
+import { DAYS, SEED_MEALS, SEED_PLAN, SLOTS, emptySlots, normalizeIngredients, rollingDays, storeKey } from "./data.js";
 
 const KEYS = {
   userMeals: "fm.userMeals",
@@ -219,32 +219,69 @@ function normalizeGroceryItem(item) {
     id: String(item.id),
     name: String(item.name),
     checked: Boolean(item.checked),
-    store: typeof item.store === "string" ? item.store.trim() : "",
   };
+}
+
+function normalizeGroceryStore(store) {
+  if (!store || !store.id || !store.name) return null;
+  return {
+    id: String(store.id),
+    name: String(store.name).trim(),
+    items: Array.isArray(store.items) ? store.items.map(normalizeGroceryItem).filter(Boolean) : [],
+  };
+}
+
+function legacyStoreLabel(name) {
+  const trimmed = String(name || "").trim();
+  return trimmed || "No store";
+}
+
+export function migrateLegacyGrocery(saved) {
+  const items = Array.isArray(saved?.items) ? saved.items : Array.isArray(saved?.extras) ? saved.extras : [];
+  const customStores = Array.isArray(saved?.customStores) ? saved.customStores : [];
+  const bucket = new Map();
+
+  const touchStore = (rawName) => {
+    const name = legacyStoreLabel(rawName);
+    const key = storeKey(name);
+    if (!bucket.has(key)) {
+      bucket.set(key, { id: `s-${key}-${bucket.size}`, name, items: [] });
+    }
+    return bucket.get(key);
+  };
+
+  for (const raw of items) {
+    const item = normalizeGroceryItem(raw);
+    if (!item) continue;
+    const legacyItem = raw && typeof raw === "object" ? raw : {};
+    touchStore(legacyItem.store).items.push(item);
+  }
+
+  for (const rawName of customStores) {
+    if (typeof rawName === "string" && rawName.trim()) touchStore(rawName);
+  }
+
+  return { stores: [...bucket.values()] };
 }
 
 export function loadGrocery() {
   const saved = read(KEYS.grocery, null);
-  if (saved?.version === 2 && Array.isArray(saved.items)) {
+  if (saved?.version === 3 && Array.isArray(saved.stores)) {
     return {
-      items: saved.items.map(normalizeGroceryItem).filter(Boolean),
-      customStores: Array.isArray(saved.customStores)
-        ? saved.customStores.filter((name) => typeof name === "string" && name.trim())
-        : [],
+      stores: saved.stores.map(normalizeGroceryStore).filter(Boolean),
     };
   }
 
-  const extras = Array.isArray(saved?.extras) ? saved.extras : [];
-  return {
-    items: extras.map(normalizeGroceryItem).filter(Boolean),
-    customStores: [],
-  };
+  const migrated = migrateLegacyGrocery(saved || {});
+  if (saved?.version === 2 || (saved && !saved.version)) {
+    write(KEYS.grocery, { version: 3, stores: migrated.stores });
+  }
+  return migrated;
 }
 
 export function saveGrocery(grocery) {
   write(KEYS.grocery, {
-    version: 2,
-    items: grocery.items,
-    customStores: grocery.customStores || [],
+    version: 3,
+    stores: grocery.stores,
   });
 }

@@ -1,5 +1,5 @@
-import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, STORE_PRESETS, daysStartingToday, normalizeIngredients, rollingDays } from "../src/data.js";
-import { clearDayPlan, dayHasMeals, resolveDayPlan, swapDaySlots } from "../src/storage.js";
+import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, daysStartingToday, normalizeIngredients, rollingDays } from "../src/data.js";
+import { clearDayPlan, dayHasMeals, migrateLegacyGrocery, resolveDayPlan, swapDaySlots } from "../src/storage.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
 const required = [
@@ -220,8 +220,28 @@ if (moved.dates["2026-09-05"] || moved.dates["2026-09-06"]) {
   process.exit(1);
 }
 
-if (STORE_PRESETS.includes("Aldi") || STORE_PRESETS.join("|") !== "Costco|Walmart|Target|Smith's") {
-  console.error("Store presets should keep Costco, Walmart, Target, and Smith's without Aldi", STORE_PRESETS);
+const migrated = migrateLegacyGrocery({
+  version: 2,
+  items: [
+    { id: "g1", name: "Milk", checked: false, store: "" },
+    { id: "g2", name: "Chicken", checked: true, store: "Costco" },
+    { id: "g3", name: "Chips", checked: false, store: "Aldi" },
+  ],
+  customStores: ["Trader Joe's"],
+});
+const migratedNames = migrated.stores.map((store) => store.name).sort().join("|");
+if (migratedNames !== "Aldi|Costco|No store|Trader Joe's") {
+  console.error("Legacy grocery tags should become store sections", migrated.stores);
+  process.exit(1);
+}
+const costco = migrated.stores.find((store) => store.name === "Costco");
+if (!costco || costco.items.length !== 1 || costco.items[0].name !== "Chicken") {
+  console.error("Legacy items should land in their tagged store", costco);
+  process.exit(1);
+}
+const emptyStore = migrated.stores.find((store) => store.name === "Trader Joe's");
+if (!emptyStore || emptyStore.items.length) {
+  console.error("Custom stores without items should stay visible", emptyStore);
   process.exit(1);
 }
 
