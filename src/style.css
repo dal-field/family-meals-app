@@ -252,10 +252,18 @@ h2 {
   gap: 8px;
 }
 
+.slot-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
 .slot-btn {
   width: 100%;
+  min-width: 0;
   display: grid;
-  grid-template-columns: 96px 1fr;
+  grid-template-columns: 96px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
   text-align: left;
@@ -265,16 +273,39 @@ h2 {
   padding: 10px 12px;
 }
 
+.slot-btn .value {
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.slot-swap {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+}
+
+.slot-swap svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .slot-btn .kind {
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-.slot-btn .value {
-  font-weight: 600;
 }
 
 .slot-btn.is-empty .value {

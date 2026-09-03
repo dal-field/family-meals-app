@@ -1,5 +1,5 @@
 import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, daysStartingToday, normalizeIngredients, rollingDays } from "../src/data.js";
-import { clearDayPlan, dayHasMeals, resolveDayPlan } from "../src/storage.js";
+import { clearDayPlan, dayHasMeals, resolveDayPlan, swapDaySlots } from "../src/storage.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
 const required = [
@@ -183,6 +183,40 @@ if (normalizeIngredients([" Milk ", "", "Eggs"]).join("|") !== "Milk|Eggs") {
 }
 if (normalizeIngredients(null).length) {
   console.error("Missing ingredients should be an empty list");
+  process.exit(1);
+}
+
+const swapped = { dates: {} };
+swapDaySlots(swapped, rolling[0], rolling[1], "dinner");
+const thuAfterSwap = resolveDayPlan(swapped, rolling[0]);
+const friAfterSwap = resolveDayPlan(swapped, rolling[1]);
+if (thuAfterSwap.dinner.mealId !== "beef-stroganoff" || friAfterSwap.dinner.mealId !== "ck-green-bean-casserole") {
+  console.error("Thursday and Friday dinners should swap", thuAfterSwap.dinner, friAfterSwap.dinner);
+  process.exit(1);
+}
+if (thuAfterSwap.breakfast.mealId !== "protein-pancakes" || friAfterSwap.breakfast.mealId !== "scrambled-eggs-bacon") {
+  console.error("Swap must not move other meal types");
+  process.exit(1);
+}
+
+const moved = { dates: {} };
+swapDaySlots(moved, rolling[0], rolling[4], "lunch");
+const thuAfterMove = resolveDayPlan(moved, rolling[0]);
+const monAfterMove = resolveDayPlan(moved, rolling[4]);
+if (thuAfterMove.lunch.mealId || thuAfterMove.lunch.label) {
+  console.error("Filled-to-empty swap should leave Thursday lunch empty", thuAfterMove.lunch);
+  process.exit(1);
+}
+if (monAfterMove.lunch.mealId !== "turkey-cheese-roll-up") {
+  console.error("Thursday lunch should move onto next Monday", monAfterMove.lunch);
+  process.exit(1);
+}
+if (thuAfterMove.dinner.mealId !== "ck-green-bean-casserole") {
+  console.error("Moving lunch should not re-seed or clear Thursday dinner");
+  process.exit(1);
+}
+if (moved.dates["2026-09-05"] || moved.dates["2026-09-06"]) {
+  console.error("Swap must only persist the two dates", Object.keys(moved.dates));
   process.exit(1);
 }
 
