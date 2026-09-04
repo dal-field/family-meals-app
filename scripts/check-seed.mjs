@@ -1,7 +1,7 @@
 import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, emptySlot, normalizeIngredients, weekTemplateDays } from "../src/data.js";
-import { generateFamilyCode, isFamilyCode, mealsForUpload, mergeLocalOnlyMeals, normalizeFamilyCode } from "../src/family.js";
+import { DEFAULT_FAMILY_NAME, displayFamilyName, generateFamilyCode, isFamilyCode, mealsForUpload, mergeLocalOnlyMeals, normalizeFamilyCode, normalizeFamilyName } from "../src/family.js";
 import { MAX_PHOTO_DATA_URL, resolvedMealPhotoSrc, scaleSize } from "../src/photos.js";
-import { applyRemoteMeals, clearDayPlan, clearImprovisedSeedNotes, dayHasMeals, freshPlan, loadFamilyCode, loadMeals, migrateLegacyGrocery, migratePlanToV5, resolveDayPlan, saveFamilyCode, saveSeedEdit, setPlanSlot, slotHasMeal, swapDaySlots } from "../src/storage.js";
+import { applyRemoteMeals, clearDayPlan, clearImprovisedSeedNotes, dayHasMeals, freshPlan, loadFamilyCode, loadFamilyName, loadMeals, migrateLegacyGrocery, migratePlanToV5, resolveDayPlan, saveFamilyCode, saveFamilyName, saveSeedEdit, setPlanSlot, slotHasMeal, swapDaySlots } from "../src/storage.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
 const required = [
@@ -619,6 +619,38 @@ if (afterRemote.find((meal) => meal.id === "burritos")?.notes !== "shared note")
 }
 if (!afterRemote.find((meal) => meal.id === "burritos")?.hidden) {
   console.error("Remote hidden flags should apply to seed meals");
+  process.exit(1);
+}
+
+if (DEFAULT_FAMILY_NAME !== "Family Name") {
+  console.error("Unset family title must be exactly Family Name", DEFAULT_FAMILY_NAME);
+  process.exit(1);
+}
+if (displayFamilyName("") !== "Family Name" || displayFamilyName("   ") !== "Family Name") {
+  console.error("Empty family names should display as Family Name");
+  process.exit(1);
+}
+if (normalizeFamilyName("  Littlefields  ") !== "Littlefields") {
+  console.error("Family names should trim", normalizeFamilyName("  Littlefields  "));
+  process.exit(1);
+}
+if (normalizeFamilyName("A".repeat(50)).length !== 40) {
+  console.error("Family names should cap at 40 characters");
+  process.exit(1);
+}
+if (displayFamilyName("The Littlefields") !== "The Littlefields") {
+  console.error("Saved family names should display as typed");
+  process.exit(1);
+}
+
+saveFamilyName("  Jessica & Dallin  ");
+if (loadFamilyName() !== "Jessica & Dallin") {
+  console.error("Saved family names should persist trimmed", loadFamilyName());
+  process.exit(1);
+}
+saveFamilyName("");
+if (loadFamilyName() || displayFamilyName(loadFamilyName()) !== "Family Name") {
+  console.error("Clearing the family name should fall back to Family Name");
   process.exit(1);
 }
 

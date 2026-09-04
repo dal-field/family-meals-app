@@ -4,6 +4,7 @@ import {
   mealsForUpload,
   mergeLocalOnlyMeals,
   normalizeFamilyCode,
+  normalizeFamilyName,
 } from "./family.js";
 import {
   createHousehold,
@@ -14,6 +15,7 @@ import {
   loadHousehold,
   signInFamily,
   writeHouseholdMeal,
+  writeHouseholdMeta,
   writeHouseholdPlan,
   writeHouseholdStore,
 } from "./firebase.js";
@@ -31,9 +33,11 @@ import {
   exportHiddenSeedIds,
   exportSyncMeals,
   loadFamilyCode,
+  loadFamilyName,
   loadGrocery,
   loadPlan,
   saveFamilyCode,
+  saveFamilyName,
 } from "./storage.js";
 
 let unsubscribe = null;
@@ -114,7 +118,11 @@ export function currentFamilyCode() {
 
 export async function uploadLocalHousehold(code, meals = exportSyncMeals()) {
   await createHousehold(code);
-  const remote = await loadHousehold(code).catch(() => ({ meals: [], stores: [] }));
+  const remote = await loadHousehold(code).catch(() => ({ meals: [], stores: [], name: "" }));
+  const remoteName = normalizeFamilyName(remote.name);
+  const localName = loadFamilyName();
+  if (remoteName) saveFamilyName(remoteName);
+  else if (localName) await writeHouseholdMeta(code, { name: localName });
   await pushMealDocs(code, meals);
   const uploadedIds = new Set(mealsForUpload(meals, exportHiddenSeedIds()).map((meal) => meal.id));
   await Promise.all(
@@ -140,6 +148,9 @@ export async function applyHouseholdSnapshot(remote, { mergeLocalMeals = false }
     }
     if (remote.weekdays) applyRemotePlan(remote.weekdays);
     if (Array.isArray(remote.stores)) applyRemoteGrocery(remote.stores);
+    if (Object.prototype.hasOwnProperty.call(remote, "name")) {
+      saveFamilyName(normalizeFamilyName(remote.name));
+    }
     return meals;
   } finally {
     applying = false;
@@ -180,6 +191,21 @@ export async function pushPlanChange() {
   try {
     await createHousehold(code);
     await pushPlan(code);
+  } catch {
+    /* offline cache still holds the latest write */
+  } finally {
+    pushing = false;
+  }
+}
+
+export async function pushFamilyName(name) {
+  const code = loadFamilyCode();
+  const next = normalizeFamilyName(name);
+  saveFamilyName(next);
+  if (!code || applying) return;
+  pushing = true;
+  try {
+    await writeHouseholdMeta(code, { name: next });
   } catch {
     /* offline cache still holds the latest write */
   } finally {
@@ -239,6 +265,11 @@ export async function startFamilySync(handler) {
 
     stopFamilySync();
     unsubscribe = listenHousehold(code, {
+      onMeta: (meta) => {
+        if (gen !== syncGeneration || applying || pushing || !meta) return;
+        applyHouseholdSnapshot({ name: meta.name || "" });
+        onRemote(handler);
+      },
       onMeals: async (meals) => {
         if (gen !== syncGeneration || applying || pushing || !meals.length) return;
         await applyHouseholdSnapshot({ meals }, { mergeLocalMeals: false });
@@ -282,6 +313,7 @@ export async function joinFamily(rawCode, handler) {
     await applyMealPhotos(merged);
     if (remote.weekdays) applyRemotePlan(remote.weekdays);
     if (Array.isArray(remote.stores)) applyRemoteGrocery(remote.stores);
+    saveFamilyName(normalizeFamilyName(remote.name));
     lastStoreIds = (remote.stores || []).map((store) => store.id);
   } finally {
     applying = false;

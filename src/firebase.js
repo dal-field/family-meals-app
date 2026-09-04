@@ -44,6 +44,10 @@ export async function createHousehold(code) {
   await setDoc(householdRef(code), { createdAt: Date.now() }, { merge: true });
 }
 
+export async function writeHouseholdMeta(code, fields) {
+  await setDoc(householdRef(code), { ...fields, updatedAt: Date.now() }, { merge: true });
+}
+
 export async function writeHouseholdMeal(code, meal) {
   await setDoc(doc(db, "households", code, "meals", meal.id), meal);
 }
@@ -65,19 +69,26 @@ export async function deleteHouseholdStore(code, storeId) {
 }
 
 export async function loadHousehold(code) {
-  const [mealsSnap, planSnap, storesSnap] = await Promise.all([
+  const [metaSnap, mealsSnap, planSnap, storesSnap] = await Promise.all([
+    getDoc(householdRef(code)),
     getDocs(collection(db, "households", code, "meals")),
     getDoc(doc(db, "households", code, "plan", "week")),
     getDocs(collection(db, "households", code, "stores")),
   ]);
+  const meta = metaSnap.exists() ? metaSnap.data() : {};
   return {
+    name: String(meta.name || ""),
+    createdAt: meta.createdAt || null,
     meals: mealsSnap.docs.map((item) => item.data()),
     weekdays: planSnap.exists() ? planSnap.data().weekdays : null,
     stores: storesSnap.docs.map((item) => item.data()),
   };
 }
 
-export function listenHousehold(code, { onMeals, onPlan, onStores }) {
+export function listenHousehold(code, { onMeals, onPlan, onStores, onMeta }) {
+  const unsubMeta = onSnapshot(householdRef(code), (snap) => {
+    onMeta?.(snap.exists() ? snap.data() : null);
+  });
   const unsubMeals = onSnapshot(collection(db, "households", code, "meals"), (snap) => {
     onMeals(snap.docs.map((item) => item.data()));
   });
@@ -88,6 +99,7 @@ export function listenHousehold(code, { onMeals, onPlan, onStores }) {
     onStores(snap.docs.map((item) => item.data()));
   });
   return () => {
+    unsubMeta();
     unsubMeals();
     unsubPlan();
     unsubStores();

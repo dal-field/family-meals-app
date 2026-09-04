@@ -1,5 +1,4 @@
 import {
-  FAMILY,
   SEED_MEALS,
   SLOTS,
   TYPE_ORDER,
@@ -14,6 +13,7 @@ import {
   dayHasMeals,
   deleteUserMeal,
   hideSeedMeal,
+  loadFamilyName,
   loadGrocery,
   loadMeals,
   loadPlan,
@@ -27,10 +27,11 @@ import {
   swapDaySlots,
 } from "./storage.js";
 import { compressImageFile, deleteMealPhoto, getMealPhoto, putMealPhoto, resolvedMealPhotoSrc } from "./photos.js";
-import { isFamilyCode, normalizeFamilyCode } from "./family.js";
+import { DEFAULT_FAMILY_NAME, displayFamilyName, isFamilyCode, normalizeFamilyCode, normalizeFamilyName } from "./family.js";
 import {
   currentFamilyCode,
   joinFamily,
+  pushFamilyName,
   pushGroceryChange,
   pushMealChange,
   pushPlanChange,
@@ -96,6 +97,8 @@ export function createApp(root) {
     photoCache: {},
     photoViewer: null,
     familyCode: currentFamilyCode(),
+    familyName: loadFamilyName(),
+    familySheet: null,
     familyJoin: null,
   };
 
@@ -213,6 +216,7 @@ export function createApp(root) {
     state.plan = loadPlan();
     state.grocery = loadGrocery();
     state.familyCode = currentFamilyCode();
+    state.familyName = loadFamilyName();
     Object.keys(state.photoCache).forEach((id) => {
       revokePhotoUrls(state.photoCache[id]);
       delete state.photoCache[id];
@@ -416,7 +420,7 @@ export function createApp(root) {
         ${state.tab === "week" ? weekNavHeader() : `
         <header class="topbar">
           <div>
-            <p class="kicker">${FAMILY}</p>
+            <p class="kicker">${escapeHtml(displayFamilyName(state.familyName))}</p>
             <h1>${headerTitle()}</h1>
           </div>
         </header>`}
@@ -437,6 +441,7 @@ export function createApp(root) {
       ${state.weekSlotDetail ? weekSlotDetailSheet() : ""}
       ${state.dinnerIdea ? dinnerIdeaSheet() : ""}
       ${state.storeDialog ? storeDialogSheet() : ""}
+      ${state.familySheet ? familySheet() : ""}
       ${state.familyJoin ? familyJoinSheet() : ""}
       ${state.photoViewer ? photoViewerSheet() : ""}
       ${state.toast ? `<div class="toast" role="status">${escapeHtml(state.toast)}</div>` : ""}
@@ -453,21 +458,58 @@ export function createApp(root) {
   }
 
   function weekNavHeader() {
+    const title = displayFamilyName(state.familyName);
+    const unset = !normalizeFamilyName(state.familyName);
     return `
       <header class="topbar week-nav">
-        <p class="kicker">${FAMILY}</p>
-        ${familyBar()}
+        <button
+          class="week-title ${unset ? "is-placeholder" : ""}"
+          type="button"
+          data-open-family-sheet
+          aria-haspopup="dialog"
+          aria-label="${escapeAttr(`${title}. Open family settings`)}"
+        >
+          <span class="week-title-name">${escapeHtml(title)}</span>
+          <span class="week-title-affordance">Tap to edit</span>
+        </button>
       </header>`;
   }
 
-  function familyBar() {
+  function familySheet() {
+    const sheet = state.familySheet;
+    if (!sheet) return "";
     const code = state.familyCode || "——————";
     return `
-      <div class="family-bar" role="group" aria-label="Family code">
-        <span class="family-bar-label">Family</span>
-        <button class="family-code" type="button" data-copy-family-code aria-label="Copy family code ${escapeAttr(code)}">${escapeHtml(code)}</button>
-        <button class="ghost family-bar-btn" type="button" data-copy-family-code>Copy</button>
-        <button class="ghost family-bar-btn" type="button" data-open-family-join>Join</button>
+      <div class="sheet-backdrop" data-close-family-sheet>
+        <aside class="sheet sheet-confirm" role="dialog" aria-modal="true" aria-labelledby="family-sheet-title">
+          <div class="sheet-body">
+            <p class="kicker">Family</p>
+            <h2 id="family-sheet-title">Family settings</h2>
+            <label class="store-name-field">
+              Family name
+              <input
+                type="text"
+                maxlength="40"
+                autocomplete="off"
+                data-family-name-draft
+                value="${escapeAttr(sheet.nameDraft)}"
+                placeholder="${escapeAttr(DEFAULT_FAMILY_NAME)}"
+              />
+            </label>
+            <div class="family-code-block">
+              <div class="hint">Family code</div>
+              <div class="family-code-row">
+                <span class="family-code" aria-label="Family code ${escapeAttr(code)}">${escapeHtml(code)}</span>
+                <button class="ghost family-bar-btn" type="button" data-copy-family-code>Copy</button>
+              </div>
+            </div>
+          </div>
+          <div class="actions sheet-actions family-sheet-actions">
+            <button class="primary" type="button" data-save-family-name>Save name</button>
+            <button class="ghost" type="button" data-open-family-join>Join another family</button>
+            <button class="ghost" type="button" data-close-family-sheet>Close</button>
+          </div>
+        </aside>
       </div>`;
   }
 
@@ -1234,8 +1276,44 @@ export function createApp(root) {
       });
     });
 
+    root.querySelectorAll("[data-open-family-sheet]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.familySheet = { nameDraft: loadFamilyName() };
+        render();
+        focusFamilyNameDraft();
+      });
+    });
+
+    root.querySelectorAll("[data-close-family-sheet]").forEach((node) => {
+      node.addEventListener("click", (event) => {
+        if (node.classList.contains("sheet-backdrop") && event.target !== node) return;
+        state.familySheet = null;
+        render();
+      });
+    });
+
+    const familyNameDraft = root.querySelector("[data-family-name-draft]");
+    if (familyNameDraft) {
+      familyNameDraft.addEventListener("input", () => {
+        if (!state.familySheet) return;
+        state.familySheet = { ...state.familySheet, nameDraft: familyNameDraft.value };
+      });
+      familyNameDraft.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          saveFamilyNameFromSheet();
+        }
+      });
+    }
+
+    const saveFamilyNameBtn = root.querySelector("[data-save-family-name]");
+    if (saveFamilyNameBtn) {
+      saveFamilyNameBtn.addEventListener("click", () => saveFamilyNameFromSheet());
+    }
+
     root.querySelectorAll("[data-open-family-join]").forEach((button) => {
       button.addEventListener("click", () => {
+        state.familySheet = null;
         state.familyJoin = { code: "", error: "", busy: false };
         render();
         focusFamilyJoin();
@@ -2151,6 +2229,24 @@ export function createApp(root) {
     }
   }
 
+  function focusFamilyNameDraft() {
+    const next = root.querySelector("[data-family-name-draft]");
+    if (next) {
+      next.focus();
+      next.setSelectionRange(next.value.length, next.value.length);
+    }
+  }
+
+  function saveFamilyNameFromSheet() {
+    if (!state.familySheet) return;
+    const next = normalizeFamilyName(state.familySheet.nameDraft);
+    state.familyName = next;
+    state.familySheet = null;
+    void pushFamilyName(next);
+    toast(next ? `Saved ${next}` : "Using Family Name until you set one");
+    render();
+  }
+
   function focusFamilyJoin() {
     const next = root.querySelector("[data-family-join-code]");
     if (next) next.focus();
@@ -2175,8 +2271,10 @@ export function createApp(root) {
     try {
       await joinFamily(code, applySyncedState);
       state.familyCode = currentFamilyCode();
+      state.familyName = loadFamilyName();
       state.familyJoin = null;
-      toast(`Joined family ${code}`);
+      const joinedName = displayFamilyName(state.familyName);
+      toast(joinedName === DEFAULT_FAMILY_NAME ? `Joined family ${code}` : `Joined ${joinedName}`);
       render();
     } catch (error) {
       state.familyJoin = {
@@ -2200,6 +2298,10 @@ export function createApp(root) {
     .then((code) => {
       if (code && code !== state.familyCode) {
         state.familyCode = code;
+        state.familyName = loadFamilyName();
+        render();
+      } else if (loadFamilyName() !== state.familyName) {
+        state.familyName = loadFamilyName();
         render();
       }
     })
