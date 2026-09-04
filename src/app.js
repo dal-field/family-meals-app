@@ -180,7 +180,6 @@ export function createApp(root) {
     const q = query.trim().toLowerCase();
     return visibleMeals()
       .filter((meal) => {
-        if (type === "makeAhead") return meal.makeAhead;
         if (type !== "all" && !meal.types.includes(type)) return false;
         if (!q) return true;
         const blob = [meal.name, meal.notes, meal.ingredients.join(" "), meal.recipeUrl].join(" ").toLowerCase();
@@ -560,7 +559,7 @@ export function createApp(root) {
 
   function weekView() {
     const days = weekDays();
-    const dinners = filteredLibrary(state.dinnerQuery, "dinner");
+    const dinners = filteredLibrary("", "dinner");
 
     return `
       <section class="week-grid-card" aria-label="Weekly meal plan">
@@ -599,13 +598,6 @@ export function createApp(root) {
 
       <section class="section dinner-ideas">
         <h2>Dinners</h2>
-        <input
-          class="search"
-          type="search"
-          placeholder="Search dinners"
-          value="${escapeAttr(state.dinnerQuery)}"
-          data-dinner-search
-        />
         <div class="dinner-idea-grid">
           ${
             dinners.length
@@ -614,11 +606,11 @@ export function createApp(root) {
                     (meal) => `
                       <button class="dinner-idea" type="button" data-dinner-idea="${meal.id}">
                         <span class="meal-name">${escapeHtml(meal.name)}</span>
-                        <span class="meal-meta">${meal.makeAhead ? "Make-ahead" : meal.recipeUrl ? "Recipe" : "Dinner"}</span>
+                        <span class="meal-meta">${meal.recipeUrl ? "Recipe" : "Dinner"}</span>
                       </button>`
                   )
                   .join("")
-              : `<p class="empty">No dinners match that search.</p>`
+              : `<p class="empty">No dinners yet.</p>`
           }
         </div>
       </section>
@@ -626,6 +618,7 @@ export function createApp(root) {
   }
 
   function mealsView() {
+    if (state.mealFilter === "makeAhead") state.mealFilter = "all";
     const meals = filteredLibrary(state.query, state.mealFilter);
     const hiddenCount = state.meals.filter((meal) => meal.hidden).length;
     const filters = [
@@ -634,7 +627,6 @@ export function createApp(root) {
       ["lunch", "Lunch"],
       ["dinner", "Dinner"],
       ["snack", "Snack"],
-      ["makeAhead", "Make-ahead"],
     ];
 
     return `
@@ -788,13 +780,14 @@ export function createApp(root) {
   function addView() {
     const form = state.form;
     return `
-      <form class="form card" style="padding:16px" data-meal-form>
+      <form class="form card" data-meal-form>
         <label>
           Name
           <input name="name" required placeholder="e.g. Sheet pan nachos" value="${escapeAttr(form.name)}" />
         </label>
+        ${photoField()}
         <div>
-          <div class="hint" style="margin-bottom:8px">Meal types</div>
+          <div class="hint">Meal types</div>
           <div class="type-picks">
             ${TYPE_ORDER.map(
               (type) => `
@@ -813,9 +806,8 @@ export function createApp(root) {
           Recipe URL
           <input name="recipeUrl" type="text" inputmode="url" autocomplete="off" placeholder="https://" value="${escapeAttr(form.recipeUrl)}" />
         </label>
-        ${photoField()}
         <div>
-          <div class="hint" style="margin-bottom:8px">Ingredients</div>
+          <div class="hint">Ingredients</div>
           <div class="ingredient-add">
             <input
               type="text"
@@ -839,13 +831,9 @@ export function createApp(root) {
                     )
                     .join("")}
                 </ul>`
-              : `<p class="hint">Add one item at a time. Each stays its own row.</p>`
+              : ""
           }
         </div>
-        <label class="check-row">
-          <input type="checkbox" name="makeAhead" ${form.makeAhead ? "checked" : ""} />
-          Make-ahead
-        </label>
         <div class="actions">
           <button class="primary" type="submit">${state.editingId ? "Save changes" : "Save meal"}</button>
           ${
@@ -864,7 +852,6 @@ export function createApp(root) {
       ${mealPhotoButton(meal.id)}
       <div class="badge-row">
         ${meal.types.map((type) => `<span class="badge">${TYPE_LABEL[type]}</span>`).join("")}
-        ${meal.makeAhead ? `<span class="badge">Make-ahead</span>` : ""}
         ${meal.hidden ? `<span class="badge">Hidden</span>` : ""}
       </div>
       ${
@@ -1356,19 +1343,6 @@ export function createApp(root) {
     if (submitFamilyJoinBtn) {
       submitFamilyJoinBtn.addEventListener("click", () => {
         void submitFamilyJoin();
-      });
-    }
-
-    const dinnerSearch = root.querySelector("[data-dinner-search]");
-    if (dinnerSearch) {
-      dinnerSearch.addEventListener("input", () => {
-        state.dinnerQuery = dinnerSearch.value;
-        render();
-        const next = root.querySelector("[data-dinner-search]");
-        if (next) {
-          next.focus();
-          next.setSelectionRange(state.dinnerQuery.length, state.dinnerQuery.length);
-        }
       });
     }
 
@@ -2001,7 +1975,6 @@ export function createApp(root) {
     state.form.notes = String(data.get("notes") || "");
     state.form.recipeUrl = String(data.get("recipeUrl") || "");
     state.form.types = [...form.querySelectorAll('input[name="types"]:checked')].map((input) => input.value);
-    state.form.makeAhead = Boolean(form.querySelector('[name="makeAhead"]')?.checked);
   }
 
   function addIngredientRow(form) {
@@ -2214,7 +2187,7 @@ export function createApp(root) {
 
   function mealMeta(meal) {
     const types = meal.types.map((type) => TYPE_LABEL[type]).join(" · ");
-    return meal.makeAhead ? `${types} · Make-ahead` : types;
+    return types;
   }
 
   async function copyFamilyCode() {
