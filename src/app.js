@@ -27,6 +27,16 @@ import {
   swapDaySlots,
 } from "./storage.js";
 import { compressImageFile, deleteMealPhoto, getMealPhoto, putMealPhoto, resolvedMealPhotoSrc } from "./photos.js";
+import { isFamilyCode, normalizeFamilyCode } from "./family.js";
+import {
+  currentFamilyCode,
+  joinFamily,
+  pushGroceryChange,
+  pushMealChange,
+  pushPlanChange,
+  removeRemoteMeal,
+  startFamilySync,
+} from "./sync.js";
 
 const TYPE_LABEL = {
   breakfast: "Breakfast",
@@ -85,6 +95,8 @@ export function createApp(root) {
     photoDraft: emptyPhotoDraft(),
     photoCache: {},
     photoViewer: null,
+    familyCode: currentFamilyCode(),
+    familyJoin: null,
   };
 
   let toastTimer = 0;
@@ -183,6 +195,29 @@ export function createApp(root) {
     if (SEED_MEALS.some((seed) => seed.id === meal.id)) saveSeedEdit(meal);
     else saveUserMeal(meal);
     refresh();
+    void pushMealChange(mealById(meal.id) || meal);
+  }
+
+  function persistPlan() {
+    savePlan(state.plan);
+    void pushPlanChange();
+  }
+
+  function persistGrocery() {
+    saveGrocery(state.grocery);
+    void pushGroceryChange();
+  }
+
+  function applySyncedState() {
+    state.meals = loadMeals();
+    state.plan = loadPlan();
+    state.grocery = loadGrocery();
+    state.familyCode = currentFamilyCode();
+    Object.keys(state.photoCache).forEach((id) => {
+      revokePhotoUrls(state.photoCache[id]);
+      delete state.photoCache[id];
+    });
+    render();
   }
 
   function revokePhotoUrls(entry) {
@@ -281,6 +316,8 @@ export function createApp(root) {
       toast("Could not save the photo on this phone");
     }
     clearPhotoDraft();
+    const meal = mealById(mealId);
+    if (meal) void pushMealChange(meal);
   }
 
   function photoField() {
@@ -400,6 +437,7 @@ export function createApp(root) {
       ${state.weekSlotDetail ? weekSlotDetailSheet() : ""}
       ${state.dinnerIdea ? dinnerIdeaSheet() : ""}
       ${state.storeDialog ? storeDialogSheet() : ""}
+      ${state.familyJoin ? familyJoinSheet() : ""}
       ${state.photoViewer ? photoViewerSheet() : ""}
       ${state.toast ? `<div class="toast" role="status">${escapeHtml(state.toast)}</div>` : ""}
     `;
@@ -418,7 +456,54 @@ export function createApp(root) {
     return `
       <header class="topbar week-nav">
         <p class="kicker">${FAMILY}</p>
+        ${familyBar()}
       </header>`;
+  }
+
+  function familyBar() {
+    const code = state.familyCode || "——————";
+    return `
+      <div class="family-bar" role="group" aria-label="Family code">
+        <span class="family-bar-label">Family</span>
+        <button class="family-code" type="button" data-copy-family-code aria-label="Copy family code ${escapeAttr(code)}">${escapeHtml(code)}</button>
+        <button class="ghost family-bar-btn" type="button" data-copy-family-code>Copy</button>
+        <button class="ghost family-bar-btn" type="button" data-open-family-join>Join</button>
+      </div>`;
+  }
+
+  function familyJoinSheet() {
+    const join = state.familyJoin;
+    if (!join) return "";
+    return `
+      <div class="sheet-backdrop" data-close-family-join>
+        <aside class="sheet sheet-confirm" role="dialog" aria-modal="true" aria-labelledby="family-join-title">
+          <div class="sheet-body">
+            <p class="kicker">Family</p>
+            <h2 id="family-join-title">Join another family</h2>
+            <p class="hint">Type the 6-character code from the other phone. Your meals stay; the week and groceries switch to theirs.</p>
+            <label class="store-name-field">
+              Family code
+              <input
+                class="family-code-input"
+                type="text"
+                inputmode="text"
+                autocomplete="off"
+                autocapitalize="characters"
+                spellcheck="false"
+                maxlength="8"
+                data-family-join-code
+                value="${escapeAttr(join.code)}"
+                placeholder="ABC123"
+              />
+            </label>
+            ${join.error ? `<p class="family-join-error">${escapeHtml(join.error)}</p>` : ""}
+          </div>
+          <div class="actions sheet-actions">
+            <button class="primary" type="button" data-submit-family-join ${join.busy ? "disabled" : ""}>${join.busy ? "Joining…" : "Join family"}</button>
+            <button class="ghost" type="button" data-close-family-join ${join.busy ? "disabled" : ""}>Cancel</button>
+          </div>
+        </aside>
+      </div>`;
   }
 
   function view() {
@@ -1143,6 +1228,60 @@ export function createApp(root) {
       });
     });
 
+    root.querySelectorAll("[data-copy-family-code]").forEach((button) => {
+      button.addEventListener("click", () => {
+        void copyFamilyCode();
+      });
+    });
+
+    root.querySelectorAll("[data-open-family-join]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.familyJoin = { code: "", error: "", busy: false };
+        render();
+        focusFamilyJoin();
+      });
+    });
+
+    root.querySelectorAll("[data-close-family-join]").forEach((node) => {
+      node.addEventListener("click", (event) => {
+        if (node.classList.contains("sheet-backdrop") && event.target !== node) return;
+        if (state.familyJoin?.busy) return;
+        state.familyJoin = null;
+        render();
+      });
+    });
+
+    const familyJoinCode = root.querySelector("[data-family-join-code]");
+    if (familyJoinCode) {
+      familyJoinCode.addEventListener("input", () => {
+        if (!state.familyJoin) return;
+        state.familyJoin = {
+          ...state.familyJoin,
+          code: normalizeFamilyCode(familyJoinCode.value),
+          error: "",
+        };
+        render();
+        const next = root.querySelector("[data-family-join-code]");
+        if (next) {
+          next.focus();
+          next.setSelectionRange(state.familyJoin.code.length, state.familyJoin.code.length);
+        }
+      });
+      familyJoinCode.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void submitFamilyJoin();
+        }
+      });
+    }
+
+    const submitFamilyJoinBtn = root.querySelector("[data-submit-family-join]");
+    if (submitFamilyJoinBtn) {
+      submitFamilyJoinBtn.addEventListener("click", () => {
+        void submitFamilyJoin();
+      });
+    }
+
     const dinnerSearch = root.querySelector("[data-dinner-search]");
     if (dinnerSearch) {
       dinnerSearch.addEventListener("input", () => {
@@ -1292,7 +1431,7 @@ export function createApp(root) {
         const target = weekDays().find((item) => item.key === button.dataset.weekSlotSwapTarget);
         if (!target || target.key === state.weekSlotDetail.day.key) return;
         swapDaySlots(state.plan, state.weekSlotDetail.day, target, state.weekSlotDetail.slot);
-        savePlan(state.plan);
+        persistPlan();
         const slotMeta = SLOTS.find((item) => item.id === state.weekSlotDetail.slot);
         toast(`Swapped ${slotMeta.label.toLowerCase()}`);
         state.weekSlotDetail = null;
@@ -1400,7 +1539,7 @@ export function createApp(root) {
         const day = state.clearConfirm;
         if (!day) return;
         clearDayPlan(state.plan, day);
-        savePlan(state.plan);
+        persistPlan();
         state.clearConfirm = null;
         toast(`Cleared ${day.title}`);
         render();
@@ -1445,7 +1584,7 @@ export function createApp(root) {
       input.addEventListener("change", () => {
         const item = findGroceryItem(input.dataset.groceryCheck);
         if (item) item.checked = input.checked;
-        saveGrocery(state.grocery);
+        persistGrocery();
         render();
       });
     });
@@ -1453,7 +1592,7 @@ export function createApp(root) {
     root.querySelectorAll("[data-grocery-delete]").forEach((button) => {
       button.addEventListener("click", () => {
         deleteGroceryItem(button.dataset.groceryDelete);
-        saveGrocery(state.grocery);
+        persistGrocery();
         render();
       });
     });
@@ -1504,7 +1643,7 @@ export function createApp(root) {
           return;
         }
         removeGroceryStore(store.id);
-        saveGrocery(state.grocery);
+        persistGrocery();
         toast(`Removed ${store.name}`);
         render();
       });
@@ -1542,7 +1681,7 @@ export function createApp(root) {
         const store = findGroceryStore(button.dataset.confirmDeleteStore);
         if (!store) return;
         removeGroceryStore(store.id);
-        saveGrocery(state.grocery);
+        persistGrocery();
         state.storeDialog = null;
         toast(`Removed ${store.name}`);
         render();
@@ -1666,6 +1805,8 @@ export function createApp(root) {
         if (!meal) return;
         hideSeedMeal(meal.id, !meal.hidden);
         refresh();
+        const updated = mealById(meal.id);
+        if (updated) void pushMealChange(updated);
         toast(meal.hidden ? "Meal is back in the library" : "Hidden from the library");
         go("meals");
       });
@@ -1677,7 +1818,7 @@ export function createApp(root) {
         const mealId = button.dataset.deleteMeal;
         deleteUserMeal(mealId);
         cachePhotoRecord(mealId, null);
-        void deleteMealPhoto(mealId).catch(() => undefined);
+        void removeRemoteMeal(mealId);
         refresh();
         toast("Meal deleted");
         go("meals");
@@ -1804,7 +1945,7 @@ export function createApp(root) {
 
   function writeSlot(day, slotId, value) {
     setPlanSlot(state.plan, day, slotId, value);
-    savePlan(state.plan);
+    persistPlan();
   }
 
   function assignDinnerToDay(day, mealId) {
@@ -1901,7 +2042,7 @@ export function createApp(root) {
         name,
         checked: false,
       });
-      saveGrocery(state.grocery);
+      persistGrocery();
     }
     state.groceryItemDrafts[storeId] = "";
     render();
@@ -1934,7 +2075,7 @@ export function createApp(root) {
         return;
       }
       addGroceryStore(name);
-      saveGrocery(state.grocery);
+      persistGrocery();
       state.storeDialog = null;
       state.storeNameDraft = "";
       toast(`Added ${name}`);
@@ -1950,7 +2091,7 @@ export function createApp(root) {
         return;
       }
       store.name = name;
-      saveGrocery(state.grocery);
+      persistGrocery();
       state.storeDialog = null;
       state.storeNameDraft = "";
       toast("Store renamed");
@@ -1979,7 +2120,7 @@ export function createApp(root) {
       existing.add(key);
       added += 1;
     }
-    if (added) saveGrocery(state.grocery);
+    if (added) persistGrocery();
     return added;
   }
 
@@ -1999,6 +2140,55 @@ export function createApp(root) {
     return meal.makeAhead ? `${types} · Make-ahead` : types;
   }
 
+  async function copyFamilyCode() {
+    const code = state.familyCode;
+    if (!isFamilyCode(code)) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      toast("Family code copied");
+    } catch {
+      toast(code);
+    }
+  }
+
+  function focusFamilyJoin() {
+    const next = root.querySelector("[data-family-join-code]");
+    if (next) next.focus();
+  }
+
+  async function submitFamilyJoin() {
+    if (!state.familyJoin || state.familyJoin.busy) return;
+    const code = normalizeFamilyCode(state.familyJoin.code);
+    if (!isFamilyCode(code)) {
+      state.familyJoin = { ...state.familyJoin, error: "Type the 6-character family code" };
+      render();
+      focusFamilyJoin();
+      return;
+    }
+    if (code === state.familyCode) {
+      state.familyJoin = null;
+      toast("Already on this family");
+      return;
+    }
+    state.familyJoin = { ...state.familyJoin, code, busy: true, error: "" };
+    render();
+    try {
+      await joinFamily(code, applySyncedState);
+      state.familyCode = currentFamilyCode();
+      state.familyJoin = null;
+      toast(`Joined family ${code}`);
+      render();
+    } catch (error) {
+      state.familyJoin = {
+        ...state.familyJoin,
+        busy: false,
+        error: error?.message || "Could not join that family",
+      };
+      render();
+      focusFamilyJoin();
+    }
+  }
+
   window.addEventListener("hashchange", () => {
     parseHash();
     render();
@@ -2006,6 +2196,16 @@ export function createApp(root) {
 
   parseHash();
   render();
+  void startFamilySync(applySyncedState)
+    .then((code) => {
+      if (code && code !== state.familyCode) {
+        state.familyCode = code;
+        render();
+      }
+    })
+    .catch(() => {
+      toast("Family sync is offline — meals stay on this phone");
+    });
 }
 
 function escapeHtml(value) {

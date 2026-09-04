@@ -1,6 +1,7 @@
 import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, emptySlot, normalizeIngredients, weekTemplateDays } from "../src/data.js";
-import { resolvedMealPhotoSrc, scaleSize } from "../src/photos.js";
-import { clearDayPlan, clearImprovisedSeedNotes, dayHasMeals, freshPlan, loadMeals, migrateLegacyGrocery, migratePlanToV5, resolveDayPlan, saveSeedEdit, setPlanSlot, slotHasMeal, swapDaySlots } from "../src/storage.js";
+import { generateFamilyCode, isFamilyCode, mealsForUpload, mergeLocalOnlyMeals, normalizeFamilyCode } from "../src/family.js";
+import { MAX_PHOTO_DATA_URL, resolvedMealPhotoSrc, scaleSize } from "../src/photos.js";
+import { applyRemoteMeals, clearDayPlan, clearImprovisedSeedNotes, dayHasMeals, freshPlan, loadFamilyCode, loadMeals, migrateLegacyGrocery, migratePlanToV5, resolveDayPlan, saveFamilyCode, saveSeedEdit, setPlanSlot, slotHasMeal, swapDaySlots } from "../src/storage.js";
 
 const names = new Set(SEED_MEALS.map((meal) => meal.name.toLowerCase()));
 const required = [
@@ -518,6 +519,106 @@ saveSeedEdit({
 const secondLoad = loadMeals();
 if (secondLoad.find((meal) => meal.id === "burritos")?.notes !== "Parent typed this later") {
   console.error("After the one-time migration, later seed edits must keep parent notes");
+  process.exit(1);
+}
+
+const generated = generateFamilyCode(Uint8Array.from([0, 1, 35, 36, 10, 255]));
+if (!isFamilyCode(generated) || generated.length !== 6) {
+  console.error("Family codes must be 6 A–Z0–9 characters", generated);
+  process.exit(1);
+}
+if (normalizeFamilyCode("ab-c12z!") !== "ABC12Z") {
+  console.error("Family codes should strip and uppercase", normalizeFamilyCode("ab-c12z!"));
+  process.exit(1);
+}
+if (normalizeFamilyCode("abcdefgh") !== "ABCDEF") {
+  console.error("Family codes should stay 6 characters", normalizeFamilyCode("abcdefgh"));
+  process.exit(1);
+}
+if (isFamilyCode("abc123") || isFamilyCode("ABC12") || !isFamilyCode("ABC123")) {
+  console.error("Family code validation should require exactly 6 uppercase A–Z0–9");
+  process.exit(1);
+}
+
+const remoteMeals = [
+  { id: "spaghetti", seed: true, name: "Spaghetti" },
+  { id: "user-jess-soup", seed: false, name: "Jess soup" },
+];
+const localMeals = [
+  { id: "spaghetti", seed: true, name: "Spaghetti local" },
+  { id: "user-dallin-chili", seed: false, name: "Dallin chili" },
+  { id: "burritos", seed: true, name: "Burritos" },
+];
+const merged = mergeLocalOnlyMeals(remoteMeals, localMeals);
+if (!merged.find((meal) => meal.id === "spaghetti" && meal.name === "Spaghetti")) {
+  console.error("Join should keep the remote household meals", merged);
+  process.exit(1);
+}
+if (!merged.find((meal) => meal.id === "user-jess-soup") || !merged.find((meal) => meal.id === "user-dallin-chili")) {
+  console.error("Join should keep both phones' user-created meals", merged);
+  process.exit(1);
+}
+if (merged.some((meal) => meal.id === "burritos")) {
+  console.error("Join should not invent seed meals that the remote household omitted", merged);
+  process.exit(1);
+}
+
+const uploaded = mealsForUpload(
+  [{ id: "burritos", name: "Burritos", types: ["dinner"], notes: "", hidden: false, seed: true, ingredients: [] }],
+  ["burritos"]
+);
+if (!uploaded[0].hidden) {
+  console.error("Hidden seed meals must upload as hidden", uploaded[0]);
+  process.exit(1);
+}
+
+if (MAX_PHOTO_DATA_URL !== 700 * 1024) {
+  console.error("Meal photos must stay under the Firestore document budget", MAX_PHOTO_DATA_URL);
+  process.exit(1);
+}
+const syncSize = scaleSize(4000, 3000, 1200);
+if (syncSize.width !== 1200 || syncSize.height !== 900) {
+  console.error("Sync photos should downscale to about 1200px", syncSize);
+  process.exit(1);
+}
+
+saveFamilyCode("ab12cd");
+if (loadFamilyCode() !== "AB12CD") {
+  console.error("Saved family codes should normalize to A–Z0–9", loadFamilyCode());
+  process.exit(1);
+}
+
+applyRemoteMeals([
+  {
+    id: "user-jess-soup",
+    name: "Jess soup",
+    types: ["dinner"],
+    notes: "hers",
+    seed: false,
+    ingredients: ["broth"],
+  },
+  {
+    id: "burritos",
+    name: "Burritos",
+    types: ["breakfast", "dinner"],
+    notes: "shared note",
+    seed: true,
+    hidden: true,
+    ingredients: [],
+    makeAhead: true,
+  },
+]);
+const afterRemote = loadMeals();
+if (afterRemote.find((meal) => meal.id === "user-jess-soup")?.notes !== "hers") {
+  console.error("Remote user meals should land in the local library", afterRemote.find((meal) => meal.id === "user-jess-soup"));
+  process.exit(1);
+}
+if (afterRemote.find((meal) => meal.id === "burritos")?.notes !== "shared note") {
+  console.error("Remote seed edits should apply without wiping user notes", afterRemote.find((meal) => meal.id === "burritos"));
+  process.exit(1);
+}
+if (!afterRemote.find((meal) => meal.id === "burritos")?.hidden) {
+  console.error("Remote hidden flags should apply to seed meals");
   process.exit(1);
 }
 

@@ -1,4 +1,4 @@
-const CACHE = "family-meals-v1";
+const CACHE = "family-meals-v2";
 const BASE = "/family-meals-app/";
 const PRECACHE = [BASE, `${BASE}index.html`, `${BASE}manifest.webmanifest`];
 
