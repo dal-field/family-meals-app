@@ -470,7 +470,6 @@ export function createApp(root) {
           aria-label="${escapeAttr(`${title}. Open family settings`)}"
         >
           <span class="week-title-name">${escapeHtml(title)}</span>
-          <span class="week-title-affordance">Tap to edit</span>
         </button>
       </header>`;
   }
