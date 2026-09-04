@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { SEED_MEALS, SEED_PLAN, SEED_MIDWEEK, DAYS, SLOTS, emptySlot, normalizeIngredients, weekTemplateDays } from "../src/data.js";
 import { DEFAULT_FAMILY_NAME, displayFamilyName, generateFamilyCode, isFamilyCode, mealsForUpload, mergeLocalOnlyMeals, normalizeFamilyCode, normalizeFamilyName } from "../src/family.js";
 import { MAX_PHOTO_DATA_URL, resolvedMealPhotoSrc, scaleSize } from "../src/photos.js";
@@ -651,6 +652,20 @@ if (loadFamilyName() !== "Jessica & Dallin") {
 saveFamilyName("");
 if (loadFamilyName() || displayFamilyName(loadFamilyName()) !== "Family Name") {
   console.error("Clearing the family name should fall back to Family Name");
+  process.exit(1);
+}
+
+const appSrc = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+if (appSrc.includes("Add one item at a time")) {
+  console.error("Add meal should not show the ingredients helper copy");
+  process.exit(1);
+}
+if (appSrc.includes("Make-ahead") || appSrc.includes("data-dinner-search")) {
+  console.error("Make-ahead chrome and the Dinners search field should be gone from the UI");
+  process.exit(1);
+}
+if (!appSrc.includes("makeAhead: state.form.makeAhead")) {
+  console.error("Existing makeAhead data should still save for compatibility");
   process.exit(1);
 }
 
