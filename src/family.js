@@ -1,5 +1,19 @@
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
+export const DEFAULT_FAMILY_NAME = "Family Name";
+export const MAX_FAMILY_NAME = 40;
+
+export function normalizeFamilyName(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_FAMILY_NAME);
+}
+
+export function displayFamilyName(value) {
+  return normalizeFamilyName(value) || DEFAULT_FAMILY_NAME;
+}
+
 export function generateFamilyCode(randomBytes) {
   const bytes =
     randomBytes ||

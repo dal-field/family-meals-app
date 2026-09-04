@@ -13,6 +13,7 @@ import {
   storeKey,
   todayDayId,
 } from "./data.js";
+import { normalizeFamilyName } from "./family.js";
 
 const KEYS = {
   userMeals: "fm.userMeals",
@@ -22,6 +23,7 @@ const KEYS = {
   grocery: "fm.grocery",
   migrations: "fm.migrations",
   familyCode: "fm.familyCode",
+  familyName: "fm.familyName",
 };
 
 const SEED_IDS = new Set(SEED_MEALS.map((meal) => meal.id));
@@ -559,6 +561,14 @@ export function loadFamilyCode() {
 
 export function saveFamilyCode(code) {
   write(KEYS.familyCode, String(code || "").toUpperCase());
+}
+
+export function loadFamilyName() {
+  return normalizeFamilyName(read(KEYS.familyName, ""));
+}
+
+export function saveFamilyName(name) {
+  write(KEYS.familyName, normalizeFamilyName(name));
 }
 
 export function replaceUserMeals(meals) {

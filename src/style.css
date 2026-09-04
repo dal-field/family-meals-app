@@ -89,10 +89,6 @@ a {
   font-size: 1.28rem;
 }
 
-.app-shell.is-week .kicker {
-  font-size: 0.68rem;
-}
-
 .topbar.week-nav {
   display: flex;
   flex-direction: column;
@@ -101,48 +97,83 @@ a {
   margin-bottom: 8px;
 }
 
-.topbar.week-nav .kicker {
-  width: 100%;
-  margin: 0;
-  text-align: center;
-}
-
-.family-bar {
+.week-title {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  width: 100%;
-  margin: 6px 0 0;
+  gap: 2px;
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  padding: 6px 14px 8px;
+  border: 0;
+  background: transparent;
+  border-radius: 16px;
 }
 
-.family-bar-label {
+.week-title-name {
+  font-family: var(--serif);
+  font-size: 1.42rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.week-title-affordance {
   color: var(--muted);
   font-size: 0.68rem;
   font-weight: 750;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.week-title.is-placeholder .week-title-name {
+  color: var(--muted);
+}
+
+.week-title:hover,
+.week-title:focus-visible,
+.week-title:active {
+  background: var(--sage-soft);
+}
+
+.family-code-block {
+  margin-top: 16px;
+}
+
+.family-code-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .family-code {
+  display: inline-flex;
+  align-items: center;
   border: 0;
   background: var(--sage-soft);
   color: var(--sage-deep);
   border-radius: 999px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 0.82rem;
+  font-size: 0.92rem;
   font-weight: 800;
   letter-spacing: 0.16em;
-  padding: 4px 10px;
-  min-height: 32px;
+  padding: 6px 12px;
+  min-height: 36px;
 }
 
 .family-bar-btn {
-  min-height: 32px;
-  padding: 4px 10px;
-  font-size: 0.78rem;
+  min-height: 36px;
+  padding: 4px 12px;
+  font-size: 0.82rem;
   border-radius: 999px;
+}
+
+.family-sheet-actions {
+  display: grid;
+  gap: 8px;
 }
 
 .family-code-input {
@@ -389,28 +420,22 @@ h2 {
     font-size: 2.15rem;
   }
 
-  .app-shell.is-week .kicker {
-    font-size: 0.86rem;
+  .week-title {
+    padding: 8px 18px 10px;
   }
 
-  .family-bar {
-    gap: 8px;
-    margin-top: 10px;
+  .week-title-name {
+    font-size: 2.15rem;
   }
 
-  .family-bar-label {
+  .week-title-affordance {
     font-size: 0.78rem;
   }
 
   .family-code {
-    font-size: 0.95rem;
-    min-height: 36px;
-    padding: 6px 12px;
-  }
-
-  .family-bar-btn {
-    min-height: 36px;
-    font-size: 0.86rem;
+    font-size: 1rem;
+    min-height: 40px;
+    padding: 8px 14px;
   }
 
   .week-grid-card {
