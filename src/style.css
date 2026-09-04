@@ -98,17 +98,16 @@ a {
 }
 
 .week-title {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
+  display: block;
   width: auto;
   max-width: 100%;
   margin: 0;
-  padding: 6px 14px 8px;
+  padding: 0;
   border: 0;
+  border-radius: 0;
   background: transparent;
-  border-radius: 16px;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .week-title-name {
@@ -120,21 +119,20 @@ a {
   overflow-wrap: anywhere;
 }
 
-.week-title-affordance {
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 750;
-  letter-spacing: 0.04em;
-}
-
 .week-title.is-placeholder .week-title-name {
   color: var(--muted);
 }
 
 .week-title:hover,
+.week-title:focus,
 .week-title:focus-visible,
 .week-title:active {
-  background: var(--sage-soft);
+  background: transparent;
+}
+
+.week-title:focus-visible {
+  outline: 2px solid var(--sage);
+  outline-offset: 4px;
 }
 
 .family-code-block {
@@ -420,16 +418,8 @@ h2 {
     font-size: 2.15rem;
   }
 
-  .week-title {
-    padding: 8px 18px 10px;
-  }
-
   .week-title-name {
     font-size: 2.15rem;
-  }
-
-  .week-title-affordance {
-    font-size: 0.78rem;
   }
 
   .family-code {
